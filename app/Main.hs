@@ -1,6 +1,13 @@
 module Main where
 
-import Lib
+import System.Environment
+
+import Server
+import Storage
 
 main :: IO ()
-main = someFunc
+main = do
+  (port:_) <- getArgs
+  storage <- initStorage
+  socket <- makeSocket port
+  mainLoop socket storage
