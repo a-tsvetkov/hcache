@@ -47,3 +47,6 @@ query storage (Get key) = do
 query storage (Set key value) = do
   set storage key value
   return (ByteString.pack "OK")
+query storage (Delete key) = do
+  delete storage key
+  return (ByteString.pack "OK")
