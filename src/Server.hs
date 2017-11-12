@@ -64,6 +64,10 @@ query storage (Incr key amount) = do
   increment storage key amount >>= checkResult "OK" "Not found or not an int"
 query storage (Decr key amount) = do
   decrement storage key amount >>= checkResult "OK" "Not found or not an int"
+query storage (Add key value) = do
+  add storage key value >>= checkResult "OK" "Already exists"
+query storage (Replace key value) = do
+  replace storage key value >>= checkResult "OK" "Not found"
 
 checkResult :: String -> String -> Bool -> IO (ByteString.ByteString)
 checkResult ok err value =

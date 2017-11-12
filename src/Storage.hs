@@ -7,6 +7,8 @@ module Storage
   , delete
   , increment
   , decrement
+  , add
+  , replace
   ) where
 
 import Data.Maybe (catMaybes)
@@ -32,6 +34,26 @@ get storage keys = atomically $ catMaybes <$> forM keys (
 set :: Storage -> Key -> Value -> IO ()
 set storage key value = atomically $ Map.insert value key storage
 
+add :: Storage -> Key -> Value -> IO Bool
+add storage key value = atomically $ withValue storage key (
+  \v ->
+    case v of
+      Just _ -> return False
+      Nothing -> do
+        Map.insert value key storage
+        return True
+  )
+
+replace :: Storage -> Key -> Value -> IO Bool
+replace storage key value = atomically $ withValue storage key (
+  \v ->
+    case v of
+      Just _ -> do
+        Map.insert value key storage
+        return True
+      Nothing -> return False
+  )
+
 delete :: Storage -> Key -> IO ()
 delete storage key = atomically $ Map.delete key storage
 
@@ -41,11 +63,15 @@ increment storage key amount = atomically $ updateInteger storage key (+amount)
 decrement :: Storage -> Key -> Integer -> IO Bool
 decrement storage key amount = atomically $ updateInteger storage key (subtract amount)
 
+withValue :: Storage -> Key -> (Maybe Value -> STM a) -> STM a
+withValue storage key f = Map.lookup key storage >>= f
+
 updateInteger :: Storage -> Key -> (Integer -> Integer) -> STM Bool
-updateInteger storage key f = do
-    value <- Map.lookup key storage
+updateInteger storage key f = withValue storage key (
+  \value ->
     case value >>= readInteger of
       Nothing -> return False
       Just int -> do
         Map.insert (writeInteger $ f int) key storage
         return True
+  )
