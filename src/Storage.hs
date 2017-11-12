@@ -9,18 +9,25 @@ module Storage
   , decrement
   ) where
 
-import Query
-import Serialization
+import Data.Maybe (catMaybes)
+import Control.Monad
 import Control.Monad.STM
 import qualified STMContainers.Map as Map
+
+import Query
+import Serialization
 
 type Storage = Map.Map Key Value
 
 initStorage :: IO Storage
 initStorage = Map.newIO
 
-get :: Storage -> Key -> IO (Maybe Value)
-get storage key = atomically $ Map.lookup key storage
+get :: Storage -> [Key] -> IO [(Key, Value)]
+get storage keys = atomically $ catMaybes <$> forM keys (
+  \key -> do
+    result <- Map.lookup key storage
+    return (result >>= (\v -> return (key, v)))
+  )
 
 set :: Storage -> Key -> Value -> IO ()
 set storage key value = atomically $ Map.insert value key storage

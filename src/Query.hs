@@ -14,7 +14,7 @@ import qualified Data.ByteString.Char8 as ByteString
 type Key = ByteString.ByteString
 type Value = ByteString.ByteString
 
-data Query = Get Key | Set Key Value | Delete Key | Incr Key Integer | Decr Key Integer deriving (Show)
+data Query = Get [Key] | Set Key Value | Delete Key | Incr Key Integer | Decr Key Integer deriving (Show)
 
 parseQuery :: ByteString.ByteString -> Maybe Query
 parseQuery qBStr = do
@@ -27,7 +27,7 @@ parseQuery qBStr = do
     ("DECR", (key:value:[])) -> do
       parsed <- readInteger value
       return (Decr key parsed)
-    ("GET", (key:[])) -> return (Get key)
+    ("GET", keys@(_:_)) -> return (Get keys)
     ("DELETE", (key:[])) -> return (Delete key)
     _ -> Nothing
   where

@@ -49,11 +49,11 @@ handleClient (sock, addr) storage = do
       sendResponse s packed
 
 query :: Storage -> Query -> IO (ByteString.ByteString)
-query storage (Get key) = do
-  result <- get storage key
+query storage (Get keys) = do
+  result <- get storage keys
   case result of
-    Just v -> return v
-    Nothing -> return $ ByteString.pack "Not found"
+    [] -> return $ ByteString.pack "Not found"
+    v -> return (formatResponse v)
 query storage (Set key value) = do
   set storage key value
   return (ByteString.pack "OK")
@@ -70,3 +70,12 @@ checkResult ok err value =
   if value
     then return (ByteString.pack ok)
     else return (ByteString.pack err)
+
+formatResponse :: [(Key, Value)] -> ByteString.ByteString
+formatResponse resp =
+  ByteString.intercalate (ByteString.pack "\n") $ map formatItem resp
+  where
+    formatItem :: (Key, Value) -> ByteString.ByteString
+    formatItem (key, value) =
+      let keyStr = ByteString.append (ByteString.pack "VALUE ") key
+      in ByteString.intercalate (ByteString.pack "\n") [keyStr, value, ByteString.pack "END"]
