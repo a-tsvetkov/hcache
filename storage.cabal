@@ -42,6 +42,7 @@ test-suite storage-test
   main-is:             Spec.hs
   other-modules:       Query.ParseQuerySpec
                      , Storage.StorageSpec
+                     , Serialization.SerializationSpec
   build-depends:       base
                      , storage
                      , hspec
