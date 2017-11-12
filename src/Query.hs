@@ -21,6 +21,8 @@ data Query = Get [Key]
   | Decr Key Integer
   | Add Key Value
   | Replace Key Value
+  | Append Key Value
+  | Prepend Key Value
   deriving (Show)
 
 parseQuery :: ByteString.ByteString -> Maybe Query
@@ -36,6 +38,8 @@ parseQuery qBStr = do
     ("DECR", (key:value:[])) -> do
       parsed <- readInteger value
       return (Decr key parsed)
+    ("APPEND", (key:value:[])) -> return (Append key value)
+    ("PREPEND", (key:value:[])) -> return (Prepend key value)
     ("GET", keys@(_:_)) -> return (Get keys)
     ("DELETE", (key:[])) -> return (Delete key)
     _ -> Nothing

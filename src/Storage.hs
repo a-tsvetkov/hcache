@@ -9,9 +9,12 @@ module Storage
   , decrement
   , add
   , replace
+  , append
+  , prepend
   ) where
 
 import Data.Maybe (catMaybes)
+import qualified Data.ByteString.Char8 as ByteString
 import Control.Monad
 import Control.Monad.STM
 import qualified STMContainers.Map as Map
@@ -63,8 +66,24 @@ increment storage key amount = atomically $ updateInteger storage key (+amount)
 decrement :: Storage -> Key -> Integer -> IO Bool
 decrement storage key amount = atomically $ updateInteger storage key (subtract amount)
 
+append :: Storage -> Key -> Value -> IO Bool
+append storage key value = atomically $ updateValue storage key $ flip (ByteString.append) value
+
+prepend :: Storage -> Key -> Value -> IO Bool
+prepend storage key value = atomically $ updateValue storage key $ ByteString.append value
+
 withValue :: Storage -> Key -> (Maybe Value -> STM a) -> STM a
 withValue storage key f = Map.lookup key storage >>= f
+
+updateValue :: Storage -> Key -> (Value -> Value) -> STM Bool
+updateValue storage key f = withValue storage key (
+  \value ->
+    case value of
+      Nothing -> return False
+      Just v -> do
+        Map.insert (f v) key storage
+        return True
+    )
 
 updateInteger :: Storage -> Key -> (Integer -> Integer) -> STM Bool
 updateInteger storage key f = withValue storage key (

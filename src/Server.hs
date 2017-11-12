@@ -60,14 +60,18 @@ query storage (Set key value) = do
 query storage (Delete key) = do
   delete storage key
   return (ByteString.pack "OK")
-query storage (Incr key amount) = do
+query storage (Incr key amount) =
   increment storage key amount >>= checkResult "OK" "Not found or not an int"
-query storage (Decr key amount) = do
+query storage (Decr key amount) =
   decrement storage key amount >>= checkResult "OK" "Not found or not an int"
-query storage (Add key value) = do
+query storage (Add key value) =
   add storage key value >>= checkResult "OK" "Already exists"
-query storage (Replace key value) = do
+query storage (Replace key value) =
   replace storage key value >>= checkResult "OK" "Not found"
+query storage (Append key value) =
+  append storage key value >>= checkResult "OK" "Not found"
+query storage (Prepend key value) =
+  prepend storage key value >>= checkResult "OK" "Not found"
 
 checkResult :: String -> String -> Bool -> IO (ByteString.ByteString)
 checkResult ok err value =
