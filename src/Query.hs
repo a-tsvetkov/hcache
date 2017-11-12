@@ -23,7 +23,7 @@ data Query = Get [Key]
   | Replace Key Value
   | Append Key Value
   | Prepend Key Value
-  deriving (Show)
+  deriving (Show, Eq)
 
 parseQuery :: ByteString.ByteString -> Maybe Query
 parseQuery qBStr = do
@@ -64,7 +64,12 @@ parseQuery qBStr = do
           when quoted $ put t
           end <- ByteString.findIndex predicate <$> get
           case end of
-            Nothing -> return []
+            Nothing ->
+              if quoted
+              then return []
+              else do
+                rest <- state $ ByteString.break predicate
+                return [rest]
             Just i -> do
               arg <- state $ ByteString.splitAt i
               when quoted $ modify $ ByteString.drop 1
