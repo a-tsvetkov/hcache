@@ -60,13 +60,13 @@ query storage (Set key value) = do
 query storage (Delete key) = do
   delete storage key
   return (ByteString.pack "OK")
-query storage (Incr key) = do
-  result <- increment storage key
-  if result
-    then return (ByteString.pack "OK")
-    else return (ByteString.pack "Not found or not an int")
-query storage (Decr key) = do
-  result <- decrement storage key
-  if result
-    then return (ByteString.pack "OK")
-    else return (ByteString.pack "Not found or not an int")
+query storage (Incr key amount) = do
+  increment storage key amount >>= checkResult "OK" "Not found or not an int"
+query storage (Decr key amount) = do
+  decrement storage key amount >>= checkResult "OK" "Not found or not an int"
+
+checkResult :: String -> String -> Bool -> IO (ByteString.ByteString)
+checkResult ok err value =
+  if value
+    then return (ByteString.pack ok)
+    else return (ByteString.pack err)

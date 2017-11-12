@@ -6,6 +6,7 @@ module Query
   , Query(..)
   ) where
 
+import Serialization (readInteger)
 import Control.Monad.State.Lazy
 import Data.Char (toUpper, isSpace)
 import qualified Data.ByteString.Char8 as ByteString
@@ -13,17 +14,21 @@ import qualified Data.ByteString.Char8 as ByteString
 type Key = ByteString.ByteString
 type Value = ByteString.ByteString
 
-data Query = Get Key | Set Key Value | Delete Key | Incr Key | Decr Key deriving (Show)
+data Query = Get Key | Set Key Value | Delete Key | Incr Key Integer | Decr Key Integer deriving (Show)
 
 parseQuery :: ByteString.ByteString -> Maybe Query
 parseQuery qBStr = do
   splitted <- splitCommand qBStr
   case splitted of
     ("SET", (key:value:[])) -> return (Set key value)
+    ("INCR", (key:value:[])) -> do
+      parsed <- readInteger value
+      return (Incr key parsed)
+    ("DECR", (key:value:[])) -> do
+      parsed <- readInteger value
+      return (Decr key parsed)
     ("GET", (key:[])) -> return (Get key)
     ("DELETE", (key:[])) -> return (Delete key)
-    ("INCR", (key:[])) -> return (Incr key)
-    ("DECR", (key:[])) -> return (Decr key)
     _ -> Nothing
   where
     splitCommand :: ByteString.ByteString -> Maybe (String, [ByteString.ByteString])

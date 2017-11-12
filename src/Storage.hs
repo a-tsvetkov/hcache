@@ -10,10 +10,8 @@ module Storage
   ) where
 
 import Query
+import Serialization
 import Control.Monad.STM
-import Data.ByteString.Builder
-import Data.ByteString.Lazy (toStrict)
-import qualified Data.ByteString.Char8 as ByteString
 import qualified STMContainers.Map as Map
 
 type Storage = Map.Map Key Value
@@ -30,11 +28,11 @@ set storage key value = atomically $ Map.insert value key storage
 delete :: Storage -> Key -> IO ()
 delete storage key = atomically $ Map.delete key storage
 
-increment :: Storage -> Key -> IO Bool
-increment storage key = atomically $ updateInteger storage key (+1)
+increment :: Storage -> Key -> Integer -> IO Bool
+increment storage key amount = atomically $ updateInteger storage key (+amount)
 
-decrement :: Storage -> Key -> IO Bool
-decrement storage key = atomically $ updateInteger storage key (subtract 1)
+decrement :: Storage -> Key -> Integer -> IO Bool
+decrement storage key amount = atomically $ updateInteger storage key (subtract amount)
 
 updateInteger :: Storage -> Key -> (Integer -> Integer) -> STM Bool
 updateInteger storage key f = do
@@ -44,9 +42,3 @@ updateInteger storage key f = do
       Just int -> do
         Map.insert (writeInteger $ f int) key storage
         return True
-
-readInteger :: ByteString.ByteString -> Maybe Integer
-readInteger s = fst <$> ByteString.readInteger s
-
-writeInteger :: Integer -> ByteString.ByteString
-writeInteger int = toStrict $ toLazyByteString $ integerDec int

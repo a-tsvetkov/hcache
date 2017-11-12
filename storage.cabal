@@ -18,6 +18,7 @@ library
   exposed-modules:     Server
                      , Storage
                      , Query
+                     , Serialization
 
   build-depends:       base >= 4.7 && < 5
                      , network
