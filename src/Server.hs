@@ -60,3 +60,13 @@ query storage (Set key value) = do
 query storage (Delete key) = do
   delete storage key
   return (ByteString.pack "OK")
+query storage (Incr key) = do
+  result <- increment storage key
+  if result
+    then return (ByteString.pack "OK")
+    else return (ByteString.pack "Not found or not an int")
+query storage (Decr key) = do
+  result <- decrement storage key
+  if result
+    then return (ByteString.pack "OK")
+    else return (ByteString.pack "Not found or not an int")
