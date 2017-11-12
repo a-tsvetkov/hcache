@@ -24,6 +24,7 @@ library
                      , bytestring
                      , stm
                      , stm-containers
+                     , mtl
   default-language:    Haskell2010
 
 executable storage

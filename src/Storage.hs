@@ -9,15 +9,14 @@ module Storage
 
 import Query
 import Control.Monad.STM
-import qualified Data.ByteString as ByteString
 import qualified STMContainers.Map as Map
 
-type Storage = Map.Map ByteString.ByteString ByteString.ByteString
+type Storage = Map.Map Key Value
 
 initStorage :: IO Storage
 initStorage = Map.newIO
 
-get :: Storage -> Key -> IO (Maybe ByteString.ByteString)
+get :: Storage -> Key -> IO (Maybe Value)
 get storage key = atomically $ Map.lookup key storage
 
 set :: Storage -> Key -> Value -> IO ()

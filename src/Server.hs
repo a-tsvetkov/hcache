@@ -30,13 +30,23 @@ handleClient :: (Socket, SockAddr) -> Storage -> IO ()
 handleClient (sock, addr) storage = do
   line <- recv sock maxRecv
   _ <- case parseQuery line of
-    Nothing ->  send sock $ ByteString.append (ByteString.pack "Illegal query: ") line
+    Nothing ->  sendError sock $ "Illegal query: " ++ ByteString.unpack line
     Just (q) -> do
       result <- query storage q
-      send sock $ ByteString.append result $ ByteString.singleton '\n'
+      sendResponse sock result
   handleClient (sock, addr) storage
   where
     maxRecv = 4096
+
+    sendResponse :: Socket -> ByteString.ByteString -> IO ()
+    sendResponse s resp = do
+      _ <- send s $ ByteString.append resp $ ByteString.singleton '\n'
+      return ()
+
+    sendError :: Socket -> String -> IO ()
+    sendError s err = do
+      let packed = ByteString.pack $ "ERROR " ++ filter (/='\n') err
+      sendResponse s packed
 
 query :: Storage -> Query -> IO (ByteString.ByteString)
 query storage (Get key) = do

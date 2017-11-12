@@ -6,7 +6,8 @@ module Query
   , Query(..)
   ) where
 
-import Data.Char (toUpper)
+import Control.Monad.State.Lazy
+import Data.Char (toUpper, isSpace)
 import qualified Data.ByteString.Char8 as ByteString
 
 type Key = ByteString.ByteString
@@ -25,6 +26,28 @@ parseQuery qBStr = do
   where
     splitCommand :: ByteString.ByteString -> Maybe (String, [ByteString.ByteString])
     splitCommand str =
-      case ByteString.words str of
-        (cmd:args) -> let command = map toUpper $ ByteString.unpack cmd in Just (command, args)
-        _ -> Nothing
+      let splitted = evalState splitQuotes str
+      in
+        case splitted of
+          (cmd:args) -> let command = map toUpper $ ByteString.unpack cmd in Just (command, args)
+          _ -> Nothing
+
+    splitQuotes :: State ByteString.ByteString [ByteString.ByteString]
+    splitQuotes = do
+      modify $ ByteString.dropWhile (isSpace)
+      str <- get
+      case ByteString.uncons str of
+        Nothing -> return []
+        Just (sep, t) -> do
+          let quoted = (sep `elem` quotes)
+              predicate = if quoted then (==sep) else isSpace
+          when quoted $ put t
+          end <- ByteString.findIndex predicate <$> get
+          case end of
+            Nothing -> return []
+            Just i -> do
+              arg <- state $ ByteString.splitAt i
+              when quoted $ modify $ ByteString.drop 1
+              (arg:) <$> splitQuotes
+
+    quotes = ['\'', '"']
