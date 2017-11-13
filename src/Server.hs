@@ -31,13 +31,14 @@ mainLoop sock storage = forever $ do
   return ()
 
 handleClient :: (Socket, SockAddr) -> Storage.Storage -> StateT ByteString.ByteString IO ()
-handleClient (sock, _) storage = forever $ do
+handleClient (sock, addr) storage = do
   input <- lift $ recv sock maxRecv
   when (input /= ByteString.empty) $ do
     unprocessed <- get
     (response, rest) <- lift $ handleInput storage $ ByteString.append unprocessed input
     put rest
     lift $ sendAll sock $ response
+  handleClient (sock, addr) storage
   where
     maxRecv = 4096
 
