@@ -86,7 +86,7 @@ spec = do
         resp `shouldBe` B.pack "OK\n"
         value `shouldBe` Just (B.pack "105")
 
-      it "should return error whe trying to increment by string" $ do
+      it "should return error when trying to increment by string" $ do
         storage <- initStorage
         set storage (B.pack "key") (B.pack "100")
         (resp, _) <- handleInput storage $ B.pack "incr key test\n"
@@ -102,7 +102,7 @@ spec = do
         resp `shouldBe` B.pack "OK\n"
         value `shouldBe` Just (B.pack "95")
 
-      it "should return error whe trying to decrement by string" $ do
+      it "should return error when trying to decrement by string" $ do
         storage <- initStorage
         set storage (B.pack "key") (B.pack "100")
         (resp, _) <- handleInput storage $ B.pack "decr key test\n"
@@ -133,7 +133,7 @@ spec = do
         resp `shouldBe` B.pack "OK\n"
         value `shouldBe` Just (B.pack "newvalue")
 
-      it "should return error whe trying to replace non existing value" $ do
+      it "should return error when trying to replace non existing value" $ do
         storage <- initStorage
         (resp, _) <- handleInput storage $ B.pack "replace key newvalue\n"
         value <- atomically $ Map.lookup (B.pack "key") storage
