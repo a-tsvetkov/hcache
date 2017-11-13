@@ -43,6 +43,7 @@ test-suite storage-test
   other-modules:       Query.ParseQuerySpec
                      , Storage.StorageSpec
                      , Serialization.SerializationSpec
+                     , Server.ServerSpec
   build-depends:       base
                      , storage
                      , hspec

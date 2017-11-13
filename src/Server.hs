@@ -1,6 +1,8 @@
 module Server
     ( makeSocket
     , mainLoop
+    , handleInput
+    , query
     ) where
 
 import qualified Data.ByteString.Char8 as ByteString
@@ -31,61 +33,64 @@ mainLoop sock storage = forever $ do
 handleClient :: (Socket, SockAddr) -> Storage.Storage -> StateT ByteString.ByteString IO ()
 handleClient (sock, _) storage = forever $ do
   input <- lift $ recv sock maxRecv
-  withUparsed <- state $ ByteString.breakEnd (=='\n') . (flip ByteString.append input)
-  lift $ when (input /= ByteString.empty) $
-    forM_ (ByteString.lines withUparsed) $
-        \line -> do
-          case parseQuery line of
-            Nothing ->  sendError sock $ "Illegal query: " ++ ByteString.unpack line
-            Just (q) -> do
-              result <-  query storage q
-              sendResponse sock result
+  when (input /= ByteString.empty) $ do
+    unprocessed <- get
+    (response, rest) <- lift $ handleInput storage $ ByteString.append unprocessed input
+    put rest
+    lift $ sendAll sock $ response
   where
     maxRecv = 4096
 
-    sendResponse :: Socket -> ByteString.ByteString -> IO ()
-    sendResponse s resp = do
-      _ <- send s $ ByteString.append resp $ ByteString.singleton '\n'
-      return ()
 
-    sendError :: Socket -> String -> IO ()
-    sendError s err = do
-      let packed = ByteString.pack $ "ERROR " ++ filter (/='\n') err
-      sendResponse s packed
+handleInput :: Storage.Storage -> ByteString.ByteString -> IO (ByteString.ByteString, ByteString.ByteString)
+handleInput storage input = do
+  let (completeLines, remaining) = ByteString.breakEnd (=='\n') input
+  results <- forM (ByteString.lines completeLines) $
+    \line -> do
+      case parseQuery line of
+        Nothing -> return $ makeError $ "Illegal query: " ++ ByteString.unpack line
+        Just (q) -> do
+          result <- query storage q
+          return $ result
+
+  return $ (ByteString.unlines results, remaining)
 
 query :: Storage.Storage -> Query -> IO (ByteString.ByteString)
 query storage (Get keys) = do
   result <- Storage.get storage keys
   case result of
     [] -> return $ ByteString.pack "Not found"
-    v -> return (formatResponse v)
+    v -> return (formatData v)
 query storage (Set key value) = do
   Storage.set storage key value
   return (ByteString.pack "OK")
 query storage (Delete key) = do
-  Storage.delete storage key
-  return (ByteString.pack "OK")
+  Storage.delete storage key >>= checkResult "Not found"
 query storage (Incr key amount) =
-  Storage.increment storage key amount >>= checkResult "OK" "Not found or not an int"
+  Storage.increment storage key amount >>= checkResult "Not found"
 query storage (Decr key amount) =
-  Storage.decrement storage key amount >>= checkResult "OK" "Not found or not an int"
+  Storage.decrement storage key amount >>= checkResult "Not found"
 query storage (Add key value) =
-  Storage.add storage key value >>= checkResult "OK" "Already exists"
+  Storage.add storage key value >>= checkResult "Already exists"
 query storage (Replace key value) =
-  Storage.replace storage key value >>= checkResult "OK" "Not found"
+  Storage.replace storage key value >>= checkResult "Not found"
 query storage (Append key value) =
-  Storage.append storage key value >>= checkResult "OK" "Not found"
+  Storage.append storage key value >>= checkResult "Not found"
 query storage (Prepend key value) =
-  Storage.prepend storage key value >>= checkResult "OK" "Not found"
+  Storage.prepend storage key value >>= checkResult "Not found"
 
-checkResult :: String -> String -> Bool -> IO (ByteString.ByteString)
-checkResult ok err value =
+makeError :: String -> ByteString.ByteString
+makeError err = ByteString.pack $ "ERROR " ++ filter (/='\n') err
+
+
+checkResult :: String -> Bool -> IO (ByteString.ByteString)
+checkResult err value =
   if value
-    then return (ByteString.pack ok)
-    else return (ByteString.pack err)
+    then return $ ByteString.pack "OK"
+    else return $ makeError err
 
-formatResponse :: [(Key, Value)] -> ByteString.ByteString
-formatResponse resp =
+formatData :: [(Key, Value)] -> ByteString.ByteString
+formatData resp =
   ByteString.intercalate (ByteString.pack "\n") $ map formatItem resp
   where
     formatItem :: (Key, Value) -> ByteString.ByteString

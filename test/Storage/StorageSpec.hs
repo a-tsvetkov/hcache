@@ -87,16 +87,18 @@ spec = do
         storage <- initStorage
         let key = (B.pack "key")
         set storage key (B.pack "value")
-        delete storage key
+        result <- delete storage key
         value <- atomically $ Map.lookup key storage
         value `shouldBe` Nothing
+        result `shouldBe` True
 
-      it "should not fail if value does not exist" $ do
+      it "should return False if value does not exist" $ do
         storage <- initStorage
         let key = (B.pack "key")
-        delete storage key
+        result <- delete storage key
         value <- atomically $ Map.lookup key storage
         value `shouldBe` Nothing
+        result `shouldBe` False
 
     context "increment" $ do
       it "should add supplied value to existing one" $ do

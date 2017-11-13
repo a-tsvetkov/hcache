@@ -57,8 +57,14 @@ replace storage key value = atomically $ withValue storage key (
       Nothing -> return False
   )
 
-delete :: Storage -> Key -> IO ()
-delete storage key = atomically $ Map.delete key storage
+delete :: Storage -> Key -> IO Bool
+delete storage key = atomically $ do
+  value <- Map.lookup key storage
+  case value of
+    Just _ -> do
+      Map.delete key storage
+      return True
+    Nothing -> return False
 
 increment :: Storage -> Key -> Integer -> IO Bool
 increment storage key amount = atomically $ updateInteger storage key (+amount)
