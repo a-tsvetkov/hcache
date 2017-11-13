@@ -13,10 +13,11 @@ module Storage
   , prepend
   ) where
 
-import Data.Maybe (catMaybes)
+import qualified Focus as Focus
+import           Data.Maybe (catMaybes)
 import qualified Data.ByteString.Char8 as ByteString
-import Control.Monad
-import Control.Monad.STM
+import           Control.Monad
+import           Control.Monad.STM
 import qualified STMContainers.Map as Map
 
 import Query
@@ -38,33 +39,32 @@ set :: Storage -> Key -> Value -> IO ()
 set storage key value = atomically $ Map.insert value key storage
 
 add :: Storage -> Key -> Value -> IO Bool
-add storage key value = atomically $ withValue storage key (
+add storage key value = atomically $ Map.focus (
   \v ->
     case v of
-      Just _ -> return False
+      Just _ -> return (False, Focus.Keep)
       Nothing -> do
-        Map.insert value key storage
-        return True
-  )
+        return (True, Focus.Replace value)
+  ) key storage
 
 replace :: Storage -> Key -> Value -> IO Bool
-replace storage key value = atomically $ withValue storage key (
+replace storage key value = atomically $ Map.focus (
   \v ->
     case v of
       Just _ -> do
-        Map.insert value key storage
-        return True
-      Nothing -> return False
-  )
+        return (True, Focus.Replace value)
+      Nothing -> return (False, Focus.Keep)
+  ) key storage
 
 delete :: Storage -> Key -> IO Bool
 delete storage key = atomically $ do
-  value <- Map.lookup key storage
-  case value of
-    Just _ -> do
-      Map.delete key storage
-      return True
-    Nothing -> return False
+  Map.focus (
+    \value ->
+      case value of
+        Just _ -> do
+          return (True, Focus.Remove)
+        Nothing -> return (False, Focus.Keep)
+    ) key storage
 
 increment :: Storage -> Key -> Integer -> IO Bool
 increment storage key amount = atomically $ updateInteger storage key (+amount)
@@ -78,25 +78,20 @@ append storage key value = atomically $ updateValue storage key $ flip (ByteStri
 prepend :: Storage -> Key -> Value -> IO Bool
 prepend storage key value = atomically $ updateValue storage key $ ByteString.append value
 
-withValue :: Storage -> Key -> (Maybe Value -> STM a) -> STM a
-withValue storage key f = Map.lookup key storage >>= f
-
 updateValue :: Storage -> Key -> (Value -> Value) -> STM Bool
-updateValue storage key f = withValue storage key (
+updateValue storage key f = Map.focus (
   \value ->
     case value of
-      Nothing -> return False
+      Nothing -> return (False, Focus.Keep)
       Just v -> do
-        Map.insert (f v) key storage
-        return True
-    )
+        return (True, Focus.Replace $ f v)
+    ) key storage
 
 updateInteger :: Storage -> Key -> (Integer -> Integer) -> STM Bool
-updateInteger storage key f = withValue storage key (
+updateInteger storage key f = Map.focus (
   \value ->
     case value >>= readInteger of
-      Nothing -> return False
+      Nothing -> return (False, Focus.Keep)
       Just int -> do
-        Map.insert (writeInteger $ f int) key storage
-        return True
-  )
+        return (True, Focus.Replace $ writeInteger $ f int)
+  ) key storage
