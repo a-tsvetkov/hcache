@@ -100,6 +100,17 @@ spec = do
         value `shouldBe` Nothing
         result `shouldBe` False
 
+      it "should not affect other values" $ do
+        storage <- initStorage
+        let key = (B.pack "key")
+            key1 = (B.pack "key1")
+        set storage key (B.pack "value")
+        set storage key1 (B.pack "value")
+        result <- delete storage key
+        value <- atomically $ Map.lookup key1 storage
+        value `shouldBe` Just (B.pack "value")
+        result `shouldBe` True
+
     context "increment" $ do
       it "should add supplied value to existing one" $ do
         storage <- initStorage
