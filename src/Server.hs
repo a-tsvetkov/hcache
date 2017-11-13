@@ -8,9 +8,10 @@ import Network.Socket hiding (send, sendTo, recv, recvFrom)
 import Network.Socket.ByteString
 import Control.Concurrent
 import Control.Monad
+import Control.Monad.State
 
-import Storage
 import Query
+import qualified Storage
 
 makeSocket :: String -> IO Socket
 makeSocket port = do
@@ -21,24 +22,24 @@ makeSocket port = do
   listen sock 2
   return sock
 
-mainLoop :: Socket -> Storage -> IO ()
+mainLoop :: Socket -> Storage.Storage -> IO ()
 mainLoop sock storage = forever $ do
   conn <- accept sock
-  _ <- forkIO $ handleClient conn storage
+  _ <- forkIO $ evalStateT (handleClient conn storage) $ ByteString.pack ""
   return ()
 
-handleClient :: (Socket, SockAddr) -> Storage -> IO ()
+handleClient :: (Socket, SockAddr) -> Storage.Storage -> StateT ByteString.ByteString IO ()
 handleClient (sock, _) storage = forever $ do
-  input <- recv sock maxRecv
-  when (input /= ByteString.empty) $
-    forM_ (ByteString.lines input) $
+  input <- lift $ recv sock maxRecv
+  withUparsed <- state $ ByteString.breakEnd (=='\n') . (flip ByteString.append input)
+  lift $ when (input /= ByteString.empty) $
+    forM_ (ByteString.lines withUparsed) $
         \line -> do
           case parseQuery line of
             Nothing ->  sendError sock $ "Illegal query: " ++ ByteString.unpack line
             Just (q) -> do
-              result <- query storage q
+              result <-  query storage q
               sendResponse sock result
-
   where
     maxRecv = 4096
 
@@ -52,30 +53,30 @@ handleClient (sock, _) storage = forever $ do
       let packed = ByteString.pack $ "ERROR " ++ filter (/='\n') err
       sendResponse s packed
 
-query :: Storage -> Query -> IO (ByteString.ByteString)
+query :: Storage.Storage -> Query -> IO (ByteString.ByteString)
 query storage (Get keys) = do
-  result <- get storage keys
+  result <- Storage.get storage keys
   case result of
     [] -> return $ ByteString.pack "Not found"
     v -> return (formatResponse v)
 query storage (Set key value) = do
-  set storage key value
+  Storage.set storage key value
   return (ByteString.pack "OK")
 query storage (Delete key) = do
-  delete storage key
+  Storage.delete storage key
   return (ByteString.pack "OK")
 query storage (Incr key amount) =
-  increment storage key amount >>= checkResult "OK" "Not found or not an int"
+  Storage.increment storage key amount >>= checkResult "OK" "Not found or not an int"
 query storage (Decr key amount) =
-  decrement storage key amount >>= checkResult "OK" "Not found or not an int"
+  Storage.decrement storage key amount >>= checkResult "OK" "Not found or not an int"
 query storage (Add key value) =
-  add storage key value >>= checkResult "OK" "Already exists"
+  Storage.add storage key value >>= checkResult "OK" "Already exists"
 query storage (Replace key value) =
-  replace storage key value >>= checkResult "OK" "Not found"
+  Storage.replace storage key value >>= checkResult "OK" "Not found"
 query storage (Append key value) =
-  append storage key value >>= checkResult "OK" "Not found"
+  Storage.append storage key value >>= checkResult "OK" "Not found"
 query storage (Prepend key value) =
-  prepend storage key value >>= checkResult "OK" "Not found"
+  Storage.prepend storage key value >>= checkResult "OK" "Not found"
 
 checkResult :: String -> String -> Bool -> IO (ByteString.ByteString)
 checkResult ok err value =
