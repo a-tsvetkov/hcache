@@ -7,6 +7,7 @@ import qualified Data.ByteString.Char8 as ByteString
 import Network.Socket hiding (send, sendTo, recv, recvFrom)
 import Network.Socket.ByteString
 import Control.Concurrent
+import Control.Monad
 
 import Storage
 import Query
@@ -21,20 +22,23 @@ makeSocket port = do
   return sock
 
 mainLoop :: Socket -> Storage -> IO ()
-mainLoop sock storage = do
+mainLoop sock storage = forever $ do
   conn <- accept sock
   _ <- forkIO $ handleClient conn storage
-  mainLoop sock storage
+  return ()
 
 handleClient :: (Socket, SockAddr) -> Storage -> IO ()
-handleClient (sock, addr) storage = do
-  line <- recv sock maxRecv
-  _ <- case parseQuery line of
-    Nothing ->  sendError sock $ "Illegal query: " ++ ByteString.unpack line
-    Just (q) -> do
-      result <- query storage q
-      sendResponse sock result
-  handleClient (sock, addr) storage
+handleClient (sock, _) storage = forever $ do
+  input <- recv sock maxRecv
+  when (input /= ByteString.empty) $
+    forM_ (ByteString.lines input) $
+        \line -> do
+          case parseQuery line of
+            Nothing ->  sendError sock $ "Illegal query: " ++ ByteString.unpack line
+            Just (q) -> do
+              result <- query storage q
+              sendResponse sock result
+
   where
     maxRecv = 4096
 
