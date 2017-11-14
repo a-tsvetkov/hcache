@@ -21,15 +21,16 @@ makeSocket port = do
   sock <- socket AF_INET Stream 0
   setSocketOption sock ReuseAddr 1
   bind sock (SockAddrInet portNum iNADDR_ANY)
-  listen sock 2
+  listen sock maxQueue
   return sock
+  where
+    maxQueue = 512
 
 mainLoop :: Socket -> Storage.Storage -> IO ()
 mainLoop sock storage = forever $ do
   conn <- accept sock
   threadId <- forkIO $ evalStateT (handleClient conn storage) $ ByteString.pack ""
   putStrLn $ "New connection from " ++ (show $ snd conn) ++ " " ++ (show threadId)
-
   return ()
 
 handleClient :: (Socket, SockAddr) -> Storage.Storage -> StateT ByteString.ByteString IO ()
