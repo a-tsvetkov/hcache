@@ -27,26 +27,34 @@ makeSocket port = do
 mainLoop :: Socket -> Storage.Storage -> IO ()
 mainLoop sock storage = forever $ do
   conn <- accept sock
-  _ <- forkIO $ evalStateT (handleClient conn storage) $ ByteString.pack ""
+  threadId <- forkIO $ evalStateT (handleClient conn storage) $ ByteString.pack ""
+  putStrLn $ "New connection from " ++ (show $ snd conn) ++ " " ++ (show threadId)
+
   return ()
 
 handleClient :: (Socket, SockAddr) -> Storage.Storage -> StateT ByteString.ByteString IO ()
-handleClient (sock, addr) storage = do
+handleClient conn@(sock, _) storage = do
   input <- lift $ recv sock maxRecv
-  when (input /= ByteString.empty) $ do
-    unprocessed <- get
-    (response, rest) <- lift $ handleInput storage $ ByteString.append unprocessed input
-    put rest
-    lift $ sendAll sock $ response
-  handleClient (sock, addr) storage
+  if (ByteString.length input /= 0)
+    then
+    do
+      fullInput <- state $ ByteString.breakEnd (=='\n') . flip ByteString.append input
+      response <- lift $ handleInput storage fullInput
+      lift $ sendAll sock $ response
+      handleClient conn storage
+    else
+    do
+      threadId <- lift $ myThreadId
+      lift $ putStrLn $ show threadId ++ " connection reset by peer"
+      lift $ close sock
+      return ()
   where
     maxRecv = 4096
 
 
-handleInput :: Storage.Storage -> ByteString.ByteString -> IO (ByteString.ByteString, ByteString.ByteString)
+handleInput :: Storage.Storage -> ByteString.ByteString -> IO ByteString.ByteString
 handleInput storage input = do
-  let (completeLines, remaining) = ByteString.breakEnd (=='\n') input
-  results <- forM (ByteString.lines completeLines) $
+  results <- forM (ByteString.lines input) $
     \line -> do
       case parseQuery line of
         Nothing -> return $ makeError $ "Illegal query: " ++ ByteString.unpack line
@@ -54,7 +62,7 @@ handleInput storage input = do
           result <- query storage q
           return $ result
 
-  return $ (ByteString.unlines results, remaining)
+  return $ ByteString.unlines results
 
 query :: Storage.Storage -> Query -> IO (ByteString.ByteString)
 query storage (Get keys) = do

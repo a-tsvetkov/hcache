@@ -27,6 +27,7 @@ library
                      , stm-containers
                      , mtl
                      , focus
+                     , exceptions
   default-language:    Haskell2010
 
 executable storage
