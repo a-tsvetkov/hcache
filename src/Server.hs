@@ -10,17 +10,18 @@ import Network.Socket hiding (send, sendTo, recv, recvFrom)
 import Network.Socket.ByteString
 import Control.Concurrent
 import Control.Monad
-import Control.Monad.State
+import Control.Monad.State.Lazy
 
 import Query
 import qualified Storage
 
 makeSocket :: String -> IO Socket
-makeSocket port = do
+makeSocket port = withSocketsDo $ do
   let portNum = read port :: PortNumber
-  sock <- socket AF_INET Stream 0
+  sock <- socket AF_INET Stream defaultProtocol
   setSocketOption sock ReuseAddr 1
-  bind sock (SockAddrInet portNum iNADDR_ANY)
+  setNonBlockIfNeeded $ fdSocket sock
+  bind sock $ SockAddrInet portNum iNADDR_ANY
   listen sock maxQueue
   return sock
   where
@@ -29,12 +30,12 @@ makeSocket port = do
 mainLoop :: Socket -> Storage.Storage -> IO ()
 mainLoop sock storage = forever $ do
   conn <- accept sock
-  threadId <- forkIO $ evalStateT (handleClient conn storage) $ ByteString.pack ""
-  putStrLn $ "New connection from " ++ (show $ snd conn) ++ " " ++ (show threadId)
-  return ()
+  putStrLn $ "New connection from " ++ (show $ snd conn)
+  threadId <- forkIO $ evalStateT (handleClient storage conn) $ ByteString.pack ""
+  putStrLn $ "Forked new thread for " ++ (show $ snd conn) ++ " " ++ (show threadId)
 
-handleClient :: (Socket, SockAddr) -> Storage.Storage -> StateT ByteString.ByteString IO ()
-handleClient conn@(sock, _) storage = do
+handleClient :: Storage.Storage ->  (Socket, SockAddr) -> StateT ByteString.ByteString IO ()
+handleClient storage conn@(sock, _)  = do
   input <- lift $ recv sock maxRecv
   if (ByteString.length input /= 0)
     then
@@ -42,7 +43,7 @@ handleClient conn@(sock, _) storage = do
       fullInput <- state $ ByteString.breakEnd (=='\n') . flip ByteString.append input
       response <- lift $ handleInput storage fullInput
       lift $ sendAll sock $ response
-      handleClient conn storage
+      handleClient storage conn
     else
     do
       threadId <- lift $ myThreadId
