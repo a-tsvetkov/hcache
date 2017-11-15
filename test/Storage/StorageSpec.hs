@@ -118,7 +118,7 @@ spec = do
         set storage key (B.pack "10")
         res <- increment storage key 5
         value <- atomically $ Map.lookup key storage
-        res `shouldBe` True
+        res `shouldBe` Just (B.pack "15")
         value `shouldBe` Just (B.pack "15")
 
       it "should fail if value does not exist" $ do
@@ -126,7 +126,7 @@ spec = do
         let key = (B.pack "key")
         res <- increment storage key 5
         value <- atomically $ Map.lookup key storage
-        res `shouldBe` False
+        res `shouldBe` Nothing
         value `shouldBe` Nothing
 
       it "should properly handle big numbers" $ do
@@ -135,7 +135,7 @@ spec = do
         set storage key (B.pack "1922337203685477580710")
         res <- increment storage key 5
         value <- atomically $ Map.lookup key storage
-        res `shouldBe` True
+        res `shouldBe` Just (B.pack "1922337203685477580715")
         value `shouldBe` Just (B.pack "1922337203685477580715")
 
       it "should properly handle negative numbers" $ do
@@ -144,7 +144,7 @@ spec = do
         set storage key (B.pack "-100")
         res <- increment storage key 5
         value <- atomically $ Map.lookup key storage
-        res `shouldBe` True
+        res `shouldBe` Just (B.pack "-95")
         value `shouldBe` Just (B.pack "-95")
 
       it "should accept big number as an argument" $ do
@@ -153,7 +153,7 @@ spec = do
         set storage key (B.pack "100")
         res <- increment storage key 1922337203685477580715
         value <- atomically $ Map.lookup key storage
-        res `shouldBe` True
+        res `shouldBe` Just (B.pack "1922337203685477580815")
         value `shouldBe` Just (B.pack "1922337203685477580815")
 
     context "decrement" $ do
@@ -163,7 +163,7 @@ spec = do
         set storage key (B.pack "10")
         res <- decrement storage key 5
         value <- atomically $ Map.lookup key storage
-        res `shouldBe` True
+        res `shouldBe` Just (B.pack "5")
         value `shouldBe` Just (B.pack "5")
 
       it "should fail if value does not exist" $ do
@@ -171,7 +171,7 @@ spec = do
         let key = (B.pack "key")
         res <- decrement storage key 5
         value <- atomically $ Map.lookup key storage
-        res `shouldBe` False
+        res `shouldBe` Nothing
         value `shouldBe` Nothing
 
       it "should properly handle big numbers" $ do
@@ -180,7 +180,7 @@ spec = do
         set storage key (B.pack "1922337203685477580810")
         res <- decrement storage key 5
         value <- atomically $ Map.lookup key storage
-        res `shouldBe` True
+        res `shouldBe` Just (B.pack "1922337203685477580805")
         value `shouldBe` Just (B.pack "1922337203685477580805")
 
       it "should properly handle negative numbers" $ do
@@ -189,7 +189,7 @@ spec = do
         set storage key (B.pack "-100")
         res <- decrement storage key 5
         value <- atomically $ Map.lookup key storage
-        res `shouldBe` True
+        res `shouldBe` Just (B.pack "-105")
         value `shouldBe` Just (B.pack "-105")
 
       it "should accept big number as an argument" $ do
@@ -198,7 +198,7 @@ spec = do
         set storage key (B.pack "100")
         res <- decrement storage key 1922337203685477580715
         value <- atomically $ Map.lookup key storage
-        res `shouldBe` True
+        res `shouldBe` Just (B.pack "-1922337203685477580615")
         value `shouldBe` Just (B.pack "-1922337203685477580615")
 
     context "append" $ do

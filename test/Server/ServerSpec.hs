@@ -67,12 +67,12 @@ spec = do
         resp <- handleInput storage $ B.pack "delete key\n"
         resp `shouldBe` B.pack "ERROR Not found\n"
 
-      it "should increment value" $ do
+      it "should increment and return value" $ do
         storage <- initStorage
         set storage (B.pack "key") (B.pack "100")
         resp <- handleInput storage $ B.pack "incr key 5\n"
         value <- atomically $ Map.lookup (B.pack "key") storage
-        resp `shouldBe` B.pack "OK\n"
+        resp `shouldBe` (B.pack "105\n")
         value `shouldBe` Just (B.pack "105")
 
       it "should return error when trying to increment by string" $ do
@@ -83,12 +83,12 @@ spec = do
         resp `shouldBe` B.pack "ERROR Illegal query: incr key test\n"
         value `shouldBe` Just (B.pack "100")
 
-      it "should decrement value" $ do
+      it "should decrement and return value" $ do
         storage <- initStorage
         set storage (B.pack "key") (B.pack "100")
         resp <- handleInput storage $ B.pack "decr key 5\n"
         value <- atomically $ Map.lookup (B.pack "key") storage
-        resp `shouldBe` B.pack "OK\n"
+        resp `shouldBe` (B.pack "95\n")
         value `shouldBe` Just (B.pack "95")
 
       it "should return error when trying to decrement by string" $ do

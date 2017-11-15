@@ -66,10 +66,10 @@ delete storage key = atomically $ do
         Nothing -> return (False, Focus.Keep)
     ) key storage
 
-increment :: Storage -> Key -> Integer -> IO Bool
+increment :: Storage -> Key -> Integer -> IO (Maybe ByteString.ByteString)
 increment storage key amount = atomically $ updateInteger storage key (+amount)
 
-decrement :: Storage -> Key -> Integer -> IO Bool
+decrement :: Storage -> Key -> Integer -> IO (Maybe ByteString.ByteString)
 decrement storage key amount = atomically $ updateInteger storage key (subtract amount)
 
 append :: Storage -> Key -> Value -> IO Bool
@@ -87,11 +87,12 @@ updateValue storage key f = Map.focus (
         return (True, Focus.Replace $ f v)
     ) key storage
 
-updateInteger :: Storage -> Key -> (Integer -> Integer) -> STM Bool
+updateInteger :: Storage -> Key -> (Integer -> Integer) -> STM (Maybe ByteString.ByteString)
 updateInteger storage key f = Map.focus (
   \value ->
     case value >>= readInteger of
-      Nothing -> return (False, Focus.Keep)
+      Nothing -> return (Nothing, Focus.Keep)
       Just int -> do
-        return (True, Focus.Replace $ writeInteger $ f int)
+        let newValue = writeInteger $ f int
+        return (Just newValue, Focus.Replace $ newValue)
   ) key storage
