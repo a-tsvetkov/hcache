@@ -1,3 +1,5 @@
 *~
 .stack-work/*
 /fixture.txt
+vagrant/.vagrant/*
+vagrant/*log
