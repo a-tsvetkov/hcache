@@ -25,7 +25,7 @@ makeSocket port = withSocketsDo $ do
   listen sock maxQueue
   return sock
   where
-    maxQueue = 512
+    maxQueue = 1024
 
 mainLoop :: Socket -> Storage.Storage -> IO ()
 mainLoop sock storage = forever $ do

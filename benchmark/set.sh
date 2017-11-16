@@ -1,7 +1,1 @@
-for i in `seq 1 $1`
-do LC_ALL=C tr -dc '[:alpha:]' </dev/urandom | head -c 100 | fold -w 20 | tr '\n' ' ' | awk '{print "set "$1 " " $2 $3 $4 $5}'
-done > fixture.tmp
-
-tcpkali -c$2 -r$3 -ef fixture.tmp --duration=60 localhost:1488
-
-rm fixture.tmp
+tcpkali -d -c10k -r1 -em 'set \{re [a-z0-9]{4} } \{re [a-z0-9]{1024} }\n' --duration=300 --connect-rate=400 localhost:1488
