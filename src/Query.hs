@@ -6,9 +6,9 @@ module Query
   , Query(..)
   ) where
 
-import Serialization (readInteger)
-import Control.Monad.State.Lazy
-import Data.Char (toUpper, isSpace)
+import           Serialization (readInteger)
+import           Control.Monad.State.Lazy
+import           Data.Char (toUpper, isSpace)
 import qualified Data.ByteString.Char8 as ByteString
 
 type Key = ByteString.ByteString

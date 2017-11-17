@@ -4,8 +4,8 @@ module Serialization
  , writeInteger
  ) where
 
-import Data.ByteString.Builder
-import Data.ByteString.Lazy (toStrict)
+import           Data.ByteString.Builder
+import           Data.ByteString.Lazy (toStrict)
 import qualified Data.ByteString.Char8 as ByteString
 
 readInteger :: ByteString.ByteString -> Maybe Integer

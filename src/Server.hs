@@ -5,15 +5,15 @@ module Server
     , query
     ) where
 
-import Data.Maybe (fromMaybe)
+import           Data.Maybe (fromMaybe)
 import qualified Data.ByteString.Char8 as ByteString
-import Network.Socket hiding (send, sendTo, recv, recvFrom)
-import Network.Socket.ByteString
-import Control.Concurrent
-import Control.Monad
-import Control.Monad.State.Lazy
+import           Network.Socket hiding (send, sendTo, recv, recvFrom)
+import           Network.Socket.ByteString
+import           Control.Concurrent
+import           Control.Monad
+import           Control.Monad.State.Lazy
 
-import Query
+import           Query
 import qualified Storage
 
 makeSocket :: String -> IO Socket
