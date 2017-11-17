@@ -6,3 +6,4 @@ vagrant/*log
 *.ps
 *.hp
 *.aux
+profile/*
