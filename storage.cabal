@@ -27,7 +27,6 @@ library
                      , stm-containers
                      , mtl
                      , focus
-                     , exceptions
   default-language:    Haskell2010
 
 executable storage
@@ -36,6 +35,8 @@ executable storage
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
                      , storage
+                     , network
+                     , async
   default-language:    Haskell2010
 
 test-suite storage-test

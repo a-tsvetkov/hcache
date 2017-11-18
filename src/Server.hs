@@ -17,7 +17,7 @@ import           Query
 import qualified Storage
 
 makeSocket :: String -> IO Socket
-makeSocket port = withSocketsDo $ do
+makeSocket port = do
   let portNum = read port :: PortNumber
   sock <- socket AF_INET Stream defaultProtocol
   setSocketOption sock ReuseAddr 1
@@ -32,7 +32,7 @@ mainLoop sock storage = forever $ do
   putStrLn "Accepting.."
   conn <- accept sock
   putStrLn $ "New connection from " ++ (show $ snd conn)
-  threadId <- forkIO $ evalStateT (handleClient storage conn) $ ByteString.pack ""
+  threadId <- forkIO $ evalStateT (handleClient storage conn) $ ByteString.empty
   putStrLn $ "Forked new thread for " ++ (show $ snd conn) ++ " " ++ (show threadId)
 
 handleClient :: Storage.Storage ->  (Socket, SockAddr) -> StateT ByteString.ByteString IO ()

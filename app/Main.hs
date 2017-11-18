@@ -2,12 +2,14 @@ module Main where
 
 import System.Environment
 import Control.Concurrent
+import Network.Socket (withSocketsDo)
+import Control.Concurrent.Async
 
 import Server
 import Storage
 
 main :: IO ()
-main = do
+main = withSocketsDo $ do
   (port:_) <- getArgs
   putStrLn "Initializing storage."
   storage <- initStorage
@@ -15,4 +17,4 @@ main = do
   putStrLn $ "Listening on port " ++ port
   cores <- getNumCapabilities
   putStrLn $ "Using cores: " ++ show cores
-  mainLoop socket storage
+  wait =<< (async $ mainLoop socket storage)
