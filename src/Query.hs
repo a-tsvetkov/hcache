@@ -15,15 +15,15 @@ type Key = ByteString.ByteString
 type Value = ByteString.ByteString
 
 data Query = Get [Key]
-  | Set Key Value
-  | Delete Key
-  | Incr Key Integer
-  | Decr Key Integer
-  | Add Key Value
-  | Replace Key Value
-  | Append Key Value
-  | Prepend Key Value
-  deriving (Show, Eq)
+           | Set Key Value
+           | Delete Key
+           | Incr Key Integer
+           | Decr Key Integer
+           | Add Key Value
+           | Replace Key Value
+           | Append Key Value
+           | Prepend Key Value
+           deriving (Show, Eq)
 
 parseQuery :: ByteString.ByteString -> Maybe Query
 parseQuery qBStr = do
