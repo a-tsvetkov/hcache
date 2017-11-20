@@ -7,6 +7,7 @@ module Data.HashTable.Internal.Bucket
   , insert
   , delete
   , focus
+  , forM
   ) where
 
 import           Prelude hiding (lookup)
@@ -14,6 +15,7 @@ import           Data.IORef
 import           Data.Maybe (fromJust)
 import qualified Data.Map.Strict as Map
 import qualified Focus as Focus
+import qualified Control.Monad as Monad
 
 newtype Bucket k v = Bucket (IORef (Map.Map k (IORef v)))
 
@@ -61,6 +63,15 @@ focus (Bucket mr) k s = do
     processDecision _ (Focus.Replace v') = do
       vr' <- newIORef v'
       return (Just vr')
+
+forM :: Ord k => Bucket k v -> ((k, v) -> IO a) -> IO [a]
+forM (Bucket mr) f = do
+  m <- readIORef mr
+  Monad.forM (Map.assocs m) (
+    \(k, vr) -> do
+        v <- readIORef vr
+        f (k, v)
+    )
 
 readValue :: Maybe (IORef v) -> IO (Maybe v)
 readValue (Just vr) = do

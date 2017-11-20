@@ -20,14 +20,19 @@ library
                      , Query
                      , Serialization
 
+  other-modules:       Data.HashTable.IO.ConcurrentLinear
+                     , Data.HashTable.Internal.Bucket
+                     , Data.HashTable.Internal.Utils
+
   build-depends:       base >= 4.7 && < 5
                      , network
                      , bytestring
                      , containers >= 0.5.8
                      , concurrent-extra
-                     , hashtables
                      , mtl
                      , focus
+                     , vector
+                     , hashable
   default-language:    Haskell2010
 
 executable storage
