@@ -19,9 +19,9 @@ library
                      , Storage
                      , Query
                      , Serialization
+                     , Data.HashTable.IO.ConcurrentLinear
 
-  other-modules:       Data.HashTable.IO.ConcurrentLinear
-                     , Data.HashTable.Internal.Bucket
+  other-modules:       Data.HashTable.Internal.Bucket
                      , Data.HashTable.Internal.Utils
 
   build-depends:       base >= 4.7 && < 5
@@ -53,6 +53,7 @@ test-suite storage-test
                      , Storage.StorageSpec
                      , Serialization.SerializationSpec
                      , Server.ServerSpec
+                     , Data.HashTable.IO.ConcurrentLinearSpec
   build-depends:       base
                      , storage
                      , hspec

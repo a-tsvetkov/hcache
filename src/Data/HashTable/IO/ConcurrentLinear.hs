@@ -24,11 +24,11 @@ import qualified Control.Concurrent.Lock as Lock
 import           Control.Monad
 import qualified Focus
 
-newtype HashTable k v = HT (IORef (HashTable_ k v))
+newtype HashTable k v = HT (MVar (HashTable_ k v))
 
 data HashTable_ k v = HashTable
-  { _level :: {-# UNPACK #-} !(MVar Int)
-  , _splitptr :: {-# UNPACK #-} !(MVar Int)
+  { _level :: {-# UNPACK #-} !Int
+  , _splitptr :: {-# UNPACK #-} !Int
   , _buckets :: {-# UNPACK #-} !(IOVector (Bucket k v))
   , _locks :: {-# UNPACK #-} !(IOVector Lock)
   }
@@ -50,10 +50,8 @@ newLeveled level = do
   let size = 2^level
   buckets <- createBucketArray size
   locks <- createLockArray size
-  lmv <- newMVar level
-  sptrmv <- newMVar 0
-  let ht = HashTable lmv sptrmv buckets locks
-  ref <- newIORef ht
+  let ht = HashTable level 0  buckets locks
+  ref <- newMVar ht
   return (HT ref)
 
 new :: IO (HashTable k v)
@@ -86,13 +84,10 @@ lockBucket locks i = do
 
 lockBucketForKey :: (Ord k, Hashable k) => (HashTable k v) -> k -> IO (Bucket k v, Lock)
 lockBucketForKey (HT htRef) k = do
-  (HashTable lmv sptrmv buckets locks) <- readIORef htRef
-  lvl <- takeMVar lmv
-  splitptr <- takeMVar sptrmv
-  let h = hashKey lvl splitptr k
+  ht@(HashTable lvl splitPtr buckets locks) <- takeMVar htRef
+  let h = hashKey lvl splitPtr k
   lock <- lockBucket locks h
-  putMVar lmv lvl
-  putMVar sptrmv splitptr
+  putMVar htRef ht
   bucket <- Vector.read buckets h
   return (bucket, lock)
 
@@ -138,6 +133,12 @@ insertNoSplit ht k v = do
       needsSplit bucket
     )
 
+insertNoLock :: (Ord k, Hashable k) => (HashTable_ k v) -> k -> v -> IO ()
+insertNoLock (HashTable lvl splitPtr buckets _) k v = do
+  let h = hashKey lvl splitPtr k
+  bucket <- Vector.read buckets h
+  Bucket.insert bucket k v
+
 clearBucket :: IOVector (Bucket k v) -> Int -> IO ()
 clearBucket buckets i = do
   emptyBucket <- Bucket.new
@@ -145,19 +146,18 @@ clearBucket buckets i = do
 
 split :: (Ord k, Hashable k) => (HashTable k v) -> IO ()
 split (HT htRef) = do
-  (HashTable lmv sptrmv buckets locks) <- readIORef htRef
-  lvl <- takeMVar lmv
-  splitPtr <- takeMVar sptrmv
+  ht@(HashTable lvl splitPtr buckets locks) <- takeMVar htRef
   lock <- Vector.read locks splitPtr
   Lock.acquire lock
   bucket <- Vector.read buckets splitPtr
   clearBucket buckets splitPtr
   -- Resize buckets and locks arrays if needed
   let half = 2 ^ (lvl - 1)
-  (newLvl, newSplitPtr, newBuckets) <- if (splitPtr+1 >= half)
+  newHt <- if (splitPtr+1 >= half)
     then
     do
-      forM_ [0..(2 ^ lvl - 1)] (
+      let size = 2 ^ lvl
+      forM_ [0..(size - 1)] (
         \idx ->
           if (idx /= splitPtr)
           then do
@@ -165,36 +165,28 @@ split (HT htRef) = do
             Lock.acquire l
           else return ()
         )
-      buckets' <- Vector.grow buckets (2 ^ lvl)
-      locks' <- Vector.grow locks (2 ^ lvl)
-      forM_ [2 ^ lvl..(2 ^ (lvl+1) - 1)] (
+      buckets' <- Vector.grow buckets (size)
+      locks' <- Vector.grow locks (size)
+      forM_ [size..(2 * size - 1)] (
         \idx -> do
           clearBucket buckets' idx
           Vector.write locks' idx =<< Lock.newAcquired
         )
-      let lvl' = (lvl + 1)
-      writeIORef htRef (HashTable lmv sptrmv buckets' locks')
-      forM_ (reverse [0..(2 ^ lvl' - 1)]) (
+      forM_ (reverse [0..(2 * size - 1)]) (
         \idx ->
           if (idx /= splitPtr)
           then do
-            l <- Vector.read locks idx
+            l <- Vector.read locks' idx
             Lock.release l
           else return ()
         )
-      return (lvl', 0, buckets')
+      return (HashTable (lvl + 1) 0 buckets' locks')
     else
     do
-      return (lvl, splitPtr, buckets)
+      return ht
 
   anotherLock <- lockBucket locks (splitPtr + half)
-  _ <- Bucket.forM bucket (
-    \(k, v) -> do
-      let h = hashKey newLvl newSplitPtr k
-      b <- Vector.read newBuckets h
-      Bucket.insert b k v
-    )
+  putMVar htRef newHt
+  _ <- Bucket.forM bucket $ uncurry (insertNoLock newHt)
   Lock.release lock
   Lock.release anotherLock
-  putMVar lmv newLvl
-  putMVar sptrmv newSplitPtr

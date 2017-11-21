@@ -39,7 +39,7 @@ get storage keys = catMaybes <$> forM keys (
   )
 
 set :: Storage -> Key -> Value -> IO ()
-set storage key value = Map.insert storage value key
+set storage key value = Map.insert storage key value
 
 add :: Storage -> Key -> Value -> IO Bool
 add storage key value = Map.focus storage key (
