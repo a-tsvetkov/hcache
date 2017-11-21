@@ -80,7 +80,7 @@ Vagrant.configure(2) do |config|
     sudo sysctl -w net.ipv4.tcp_tw_reuse=1
     cd /storage
     echo "export PATH=/home/ubuntu/.local/bin:$PATH" >> /home/ubuntu/.bashrc
-    echo "ulimit -n 50000" >> /home/ubuntu/.bashrc
+    echo "ulimit -n 100000" >> /home/ubuntu/.bashrc
     stack upgrade
   SHELL
 end

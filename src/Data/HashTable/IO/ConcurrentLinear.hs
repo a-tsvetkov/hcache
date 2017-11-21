@@ -62,11 +62,11 @@ newSized size = do
       level = max 1 (fromEnum $ log2 k)
   newLeveled level
 
-hashKey :: (Hashable k) => Int -> Int -> k -> Int
-hashKey lvl splitptr k =
+hashKey :: (Hashable k) => (Ord k, Hashable k) => (HashTable_ k v) -> k -> Int
+hashKey (HashTable lvl splitPtr _ _) k =
   let h = hashAtLvl (lvl-1) k
   in
-    if (h < splitptr) then hashAtLvl lvl k else h
+    if (h < splitPtr) then hashAtLvl lvl k else h
   where
     hashAtLvl :: (Hashable k) => Int -> k -> Int
     hashAtLvl l k' =
@@ -82,13 +82,21 @@ lockBucket locks i = do
   return lock
 
 lockBucketForKey :: (Ord k, Hashable k) => (HashTable k v) -> k -> IO (Bucket k v, Lock)
-lockBucketForKey (HT htRef) k = do
-  ht@(HashTable lvl splitPtr buckets locks) <- takeMVar htRef
-  let h = hashKey lvl splitPtr k
+lockBucketForKey wrapped@(HT htRef) k = do
+  ht@(HashTable _ _ buckets locks) <- readMVar htRef
+  let h = hashKey ht k
   lock <- lockBucket locks h
-  putMVar htRef ht
-  bucket <- Vector.read buckets h
-  return (bucket, lock)
+  -- Validate that hash didn't change while we were locking the bucket
+  ht' <- readMVar htRef
+  if (hashKey ht' k == h)
+    then
+    do
+      bucket <- Vector.read buckets h
+      return (bucket, lock)
+    else
+    do
+      Lock.release lock
+      lockBucketForKey wrapped k
 
 withBucket :: (Ord k, Hashable k) => (HashTable k v) -> k -> (Bucket k v -> IO a) -> IO a
 withBucket ht k f = do
@@ -133,8 +141,8 @@ insertNoSplit ht k v = do
     )
 
 insertNoLock :: (Ord k, Hashable k) => (HashTable_ k v) -> k -> v -> IO ()
-insertNoLock (HashTable lvl splitPtr buckets _) k v = do
-  let h = hashKey lvl splitPtr k
+insertNoLock ht@(HashTable _ _ buckets _) k v = do
+  let h = hashKey ht k
   bucket <- Vector.read buckets h
   Bucket.insert bucket k v
 
@@ -153,12 +161,9 @@ split (HT htRef) = do
     do
       let size = 2 ^ lvl
       forM_ [0..(size - 1)] (
-        \idx ->
-          if (idx /= splitPtr)
-          then do
-            l <- Vector.read locks idx
-            Lock.acquire l
-          else return ()
+        \idx -> do
+          l <- Vector.read locks idx
+          Lock.acquire l
         )
       buckets' <- Vector.grow buckets (size)
       locks' <- Vector.grow locks (size)
@@ -168,12 +173,9 @@ split (HT htRef) = do
           Vector.write locks' idx =<< Lock.newAcquired
         )
       forM_ (reverse [0..(2 * size - 1)]) (
-        \idx ->
-          if (idx /= splitPtr)
-          then do
+        \idx -> do
             l <- Vector.read locks' idx
             Lock.release l
-          else return ()
         )
       return (HashTable (lvl + 1) 0 buckets' locks')
     else
