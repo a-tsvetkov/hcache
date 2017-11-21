@@ -145,14 +145,10 @@ clearBucket buckets i = do
 
 split :: (Ord k, Hashable k) => (HashTable k v) -> IO ()
 split (HT htRef) = do
-  ht@(HashTable lvl splitPtr buckets locks) <- takeMVar htRef
-  lock <- Vector.read locks splitPtr
-  Lock.acquire lock
-  bucket <- Vector.read buckets splitPtr
-  clearBucket buckets splitPtr
+  (HashTable lvl splitPtr buckets locks) <- takeMVar htRef
   -- Resize buckets and locks arrays if needed
   let half = 2 ^ (lvl - 1)
-  newHt <- if (splitPtr+1 >= half)
+  newHt@(HashTable _ _ newBuckets newLocks) <- if (splitPtr+1 >= half)
     then
     do
       let size = 2 ^ lvl
@@ -184,8 +180,12 @@ split (HT htRef) = do
     do
       return (HashTable lvl (splitPtr + 1)  buckets locks)
 
-  anotherLock <- lockBucket locks (splitPtr + half)
+  -- rehash bucket at old splitPtr
+  lock <- lockBucket newLocks splitPtr
+  rehashLock <- lockBucket newLocks (splitPtr + half)
   putMVar htRef newHt
+  bucket <- Vector.read newBuckets splitPtr
+  clearBucket buckets splitPtr
   _ <- Bucket.forM bucket $ uncurry (insertNoLock newHt)
   Lock.release lock
-  Lock.release anotherLock
+  Lock.release rehashLock
