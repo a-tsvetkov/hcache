@@ -14,7 +14,7 @@ import           Prelude hiding (lookup)
 import           Data.IORef
 import           Data.Maybe (fromJust)
 import qualified Data.Map.Strict as Map
-import qualified Focus as Focus
+import           Focus (Decision(..), Strategy)
 import qualified Control.Monad as Monad
 
 newtype Bucket k v = Bucket (IORef (Map.Map k (IORef v)))
@@ -42,7 +42,7 @@ insert (Bucket mr) k v = do
 delete :: Ord k => Bucket k v -> k -> IO ()
 delete (Bucket mr) k  = modifyIORef mr $ Map.delete k
 
-focus :: Ord k => Bucket k v -> k -> Focus.Strategy v r -> IO r
+focus :: Ord k => Bucket k v -> k -> Strategy v r -> IO r
 focus (Bucket mr) k s = do
   m <- readIORef mr
   retr <- newIORef Nothing
@@ -50,17 +50,17 @@ focus (Bucket mr) k s = do
   writeIORef mr m'
   fromJust <$> readIORef retr
   where
-    doAlter :: Focus.Strategy v r -> IORef (Maybe r) -> Maybe (IORef v) -> IO (Maybe (IORef v))
+    doAlter :: Strategy v r -> IORef (Maybe r) -> Maybe (IORef v) -> IO (Maybe (IORef v))
     doAlter strategy retr maybeRef = do
       maybeVal <- readValue maybeRef
       let (ret, des) = strategy maybeVal
       writeIORef retr (Just ret)
       processDecision maybeRef des
 
-    processDecision :: Maybe (IORef v) -> Focus.Decision v -> IO (Maybe (IORef v))
-    processDecision vr Focus.Keep = return vr
-    processDecision _ Focus.Remove = return Nothing
-    processDecision _ (Focus.Replace v') = do
+    processDecision :: Maybe (IORef v) -> Decision v -> IO (Maybe (IORef v))
+    processDecision vr Keep = return vr
+    processDecision _ Remove = return Nothing
+    processDecision _ (Replace v') = do
       vr' <- newIORef v'
       return (Just vr')
 

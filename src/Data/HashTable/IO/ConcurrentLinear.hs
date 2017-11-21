@@ -10,7 +10,6 @@ module Data.HashTable.IO.ConcurrentLinear
   ) where
 
 import           Prelude hiding (lookup)
-import           Data.IORef
 import           Data.Bits
 import           Data.Vector.Mutable (IOVector)
 import qualified Data.Vector.Mutable as Vector
@@ -22,7 +21,7 @@ import           Control.Concurrent.MVar
 import           Control.Concurrent.Lock (Lock)
 import qualified Control.Concurrent.Lock as Lock
 import           Control.Monad
-import qualified Focus
+import           Focus (Strategy)
 
 newtype HashTable k v = HT (MVar (HashTable_ k v))
 
@@ -114,7 +113,7 @@ insert ht k v = do
 delete :: (Ord k, Hashable k) => (HashTable k v) -> k -> IO ()
 delete ht k = withBucket ht k $ flip Bucket.delete k
 
-focus :: (Ord k, Hashable k) => HashTable k v -> k -> Focus.Strategy v r -> IO r
+focus :: (Ord k, Hashable k) => HashTable k v -> k -> Strategy v r -> IO r
 focus ht k f = do
   (val, willSplit) <- withBucket ht k (
     \bucket -> do

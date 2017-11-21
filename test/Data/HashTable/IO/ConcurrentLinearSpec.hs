@@ -7,6 +7,7 @@ module Data.HashTable.IO.ConcurrentLinearSpec
 import           Test.Hspec
 import           Control.Monad
 import qualified Data.HashTable.IO.ConcurrentLinear as HT
+import           Focus (Decision(..))
 
 main :: IO ()
 main = hspec spec
@@ -64,3 +65,28 @@ spec = do
         res `shouldBe` Nothing
         res' <- HT.lookup ht "keym"
         res' `shouldBe` Just "valuem"
+
+    context "focus" $ do
+      it "should keep value" $ do
+        ht <- HT.new
+        HT.insert ht "foo" "bar"
+        resFocus <- HT.focus ht "foo" (\_ -> ("barbar", Keep))
+        resLookup <- HT.lookup ht "foo"
+        resFocus `shouldBe` "barbar"
+        resLookup `shouldBe` Just "bar"
+
+      it "should delete value" $ do
+        ht <- HT.new
+        HT.insert ht "foo" "bar"
+        resFocus <- HT.focus ht "foo" (\_ -> ("barbar", Remove))
+        resLookup <- HT.lookup ht "foo"
+        resFocus `shouldBe` "barbar"
+        resLookup `shouldBe` Nothing
+
+      it "should update value" $ do
+        ht <- HT.new
+        HT.insert ht "foo" "bar"
+        resFocus <- HT.focus ht "foo" (\_ -> ("barbar", Replace "barbarbar"))
+        resLookup <- HT.lookup ht "foo"
+        resFocus `shouldBe` "barbar"
+        resLookup `shouldBe` Just "barbarbar"
