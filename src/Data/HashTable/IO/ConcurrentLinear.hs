@@ -5,6 +5,8 @@ module Data.HashTable.IO.ConcurrentLinear
   , newSized
   , lookup
   , insert
+  , delete
+  , focus
   ) where
 
 import           Prelude hiding (lookup)
@@ -20,6 +22,7 @@ import           Control.Concurrent.MVar
 import           Control.Concurrent.Lock (Lock)
 import qualified Control.Concurrent.Lock as Lock
 import           Control.Monad
+import qualified Focus
 
 newtype HashTable k v = HT (IORef (HashTable_ k v))
 
@@ -113,6 +116,20 @@ insert ht k v = do
   willSplit <- insertNoSplit ht k v
   when (willSplit) $ split ht
 
+delete :: (Ord k, Hashable k) => (HashTable k v) -> k -> IO ()
+delete ht k = withBucket ht k $ flip Bucket.delete k
+
+focus :: (Ord k, Hashable k) => HashTable k v -> k -> Focus.Strategy v r -> IO r
+focus ht k f = do
+  (val, willSplit) <- withBucket ht k (
+    \bucket -> do
+      ret <- Bucket.focus bucket k f
+      s <- needsSplit bucket
+      return (ret, s)
+    )
+  when willSplit $ split ht
+  return val
+
 insertNoSplit :: (Ord k, Hashable k) => (HashTable k v) -> k -> v -> IO Bool
 insertNoSplit ht k v = do
   withBucket ht k (
@@ -127,7 +144,7 @@ clearBucket buckets i = do
   Vector.write buckets i emptyBucket
 
 split :: (Ord k, Hashable k) => (HashTable k v) -> IO ()
-split ht@(HT htRef) = do
+split (HT htRef) = do
   (HashTable lmv sptrmv buckets locks) <- readIORef htRef
   lvl <- takeMVar lmv
   splitPtr <- takeMVar sptrmv
@@ -170,8 +187,7 @@ split ht@(HT htRef) = do
     do
       return (lvl, splitPtr, buckets)
 
-  let anotherBucketPtr = splitPtr + half
-  anotherLock <- lockBucket locks anotherBucketPtr
+  anotherLock <- lockBucket locks (splitPtr + half)
   _ <- Bucket.forM bucket (
     \(k, v) -> do
       let h = hashKey newLvl newSplitPtr k
