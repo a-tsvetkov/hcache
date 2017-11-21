@@ -43,8 +43,12 @@ handleClient storage conn@(sock, _)  = do
     do
       fullInput <- state $ ByteString.breakEnd (=='\n') . flip ByteString.append input
       lift $ do
-        response <- handleInput storage fullInput
-        sendAll sock $ response
+        forM_ (ByteString.lines fullInput) (
+          \line -> do
+            response <- handleInput storage line
+            sendAll sock $ response
+
+          )
       handleClient storage conn
     else
     lift $ do
@@ -57,15 +61,11 @@ handleClient storage conn@(sock, _)  = do
 
 handleInput :: Storage.Storage -> ByteString.ByteString -> IO ByteString.ByteString
 handleInput storage input = do
-  results <- forM (ByteString.lines input) $
-    \line -> do
-      case parseQuery line of
-        Nothing -> return $ makeError $ "Illegal query: " ++ ByteString.unpack line
-        Just (q) -> do
-          result <- query storage q
-          return $ result
-
-  return $ ByteString.unlines results
+  case parseQuery input of
+    Nothing -> return $ makeError $ "Illegal query: " ++ ByteString.unpack input
+    Just (q) -> do
+      result <- query storage q
+      return $ result
 
 query :: Storage.Storage -> Query -> IO (ByteString.ByteString)
 query storage (Get keys) = formatGet <$> Storage.get storage keys

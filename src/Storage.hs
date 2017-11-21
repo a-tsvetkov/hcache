@@ -26,7 +26,9 @@ import Serialization
 type Storage = Map.HashTable Key Value
 
 initStorage :: IO Storage
-initStorage = Map.new
+initStorage = Map.newSized defaultSize
+  where
+    defaultSize = 100000
 
 getOne :: Storage -> Key -> IO (Maybe Value)
 getOne storage key = Map.lookup storage key
