@@ -5,9 +5,8 @@ module Storage.StorageSpec
   ) where
 
 import Test.Hspec
-import Control.Monad.STM
 import qualified Data.ByteString.Char8 as B
-import qualified STMContainers.Map as Map
+
 import Storage
 
 main :: IO ()
@@ -40,21 +39,21 @@ spec = do
       it "should save value to the storage" $ do
         storage <- initStorage
         set storage (B.pack "key") (B.pack "value")
-        value <- atomically $ Map.lookup (B.pack "key") storage
+        value <- getOne storage (B.pack "key")
         value `shouldBe` Just (B.pack "value")
 
       it "should overwrite existing value" $ do
         storage <- initStorage
         set storage (B.pack "key") (B.pack "value")
         set storage (B.pack "key") (B.pack "new value")
-        value <- atomically $ Map.lookup (B.pack "key") storage
+        value <- getOne storage (B.pack "key")
         value `shouldBe` Just (B.pack "new value")
 
     context "add" $ do
       it "should create new value" $ do
         storage <- initStorage
         ret <- add storage (B.pack "key") (B.pack "value")
-        value <- atomically $ Map.lookup (B.pack "key") storage
+        value <- getOne storage  (B.pack "key")
         ret `shouldBe` True
         value `shouldBe` Just (B.pack "value")
 
@@ -62,7 +61,7 @@ spec = do
         storage <- initStorage
         set storage (B.pack "key") (B.pack "value")
         ret <- add storage (B.pack "key") (B.pack "new value")
-        value <- atomically $ Map.lookup (B.pack "key") storage
+        value <- getOne storage (B.pack "key")
         ret `shouldBe` False
         value `shouldBe` Just (B.pack "value")
 
@@ -70,7 +69,7 @@ spec = do
       it "should not create new value" $ do
         storage <- initStorage
         ret <- replace storage (B.pack "key") (B.pack "value")
-        value <- atomically $ Map.lookup (B.pack "key") storage
+        value <- getOne storage (B.pack "key")
         ret `shouldBe` False
         value `shouldBe` Nothing
 
@@ -78,7 +77,7 @@ spec = do
         storage <- initStorage
         set storage (B.pack "key") (B.pack "value")
         ret <- replace storage (B.pack "key") (B.pack "new value")
-        value <- atomically $ Map.lookup (B.pack "key") storage
+        value <- getOne storage (B.pack "key")
         ret `shouldBe` True
         value `shouldBe` Just (B.pack "new value")
 
@@ -88,7 +87,7 @@ spec = do
         let key = (B.pack "key")
         set storage key (B.pack "value")
         result <- delete storage key
-        value <- atomically $ Map.lookup key storage
+        value <- getOne storage key
         value `shouldBe` Nothing
         result `shouldBe` True
 
@@ -96,7 +95,7 @@ spec = do
         storage <- initStorage
         let key = (B.pack "key")
         result <- delete storage key
-        value <- atomically $ Map.lookup key storage
+        value <- getOne storage key
         value `shouldBe` Nothing
         result `shouldBe` False
 
@@ -107,7 +106,7 @@ spec = do
         set storage key (B.pack "value")
         set storage key1 (B.pack "value")
         result <- delete storage key
-        value <- atomically $ Map.lookup key1 storage
+        value <- getOne storage key1
         value `shouldBe` Just (B.pack "value")
         result `shouldBe` True
 
@@ -117,7 +116,7 @@ spec = do
         let key = (B.pack "key")
         set storage key (B.pack "10")
         res <- increment storage key 5
-        value <- atomically $ Map.lookup key storage
+        value <- getOne storage key
         res `shouldBe` Just (B.pack "15")
         value `shouldBe` Just (B.pack "15")
 
@@ -125,7 +124,7 @@ spec = do
         storage <- initStorage
         let key = (B.pack "key")
         res <- increment storage key 5
-        value <- atomically $ Map.lookup key storage
+        value <- getOne storage key
         res `shouldBe` Nothing
         value `shouldBe` Nothing
 
@@ -134,7 +133,7 @@ spec = do
         let key = (B.pack "key")
         set storage key (B.pack "1922337203685477580710")
         res <- increment storage key 5
-        value <- atomically $ Map.lookup key storage
+        value <- getOne storage key
         res `shouldBe` Just (B.pack "1922337203685477580715")
         value `shouldBe` Just (B.pack "1922337203685477580715")
 
@@ -143,7 +142,7 @@ spec = do
         let key = (B.pack "key")
         set storage key (B.pack "-100")
         res <- increment storage key 5
-        value <- atomically $ Map.lookup key storage
+        value <- getOne storage key
         res `shouldBe` Just (B.pack "-95")
         value `shouldBe` Just (B.pack "-95")
 
@@ -152,7 +151,7 @@ spec = do
         let key = (B.pack "key")
         set storage key (B.pack "100")
         res <- increment storage key 1922337203685477580715
-        value <- atomically $ Map.lookup key storage
+        value <- getOne storage key
         res `shouldBe` Just (B.pack "1922337203685477580815")
         value `shouldBe` Just (B.pack "1922337203685477580815")
 
@@ -162,7 +161,7 @@ spec = do
         let key = (B.pack "key")
         set storage key (B.pack "10")
         res <- decrement storage key 5
-        value <- atomically $ Map.lookup key storage
+        value <- getOne storage key
         res `shouldBe` Just (B.pack "5")
         value `shouldBe` Just (B.pack "5")
 
@@ -170,7 +169,7 @@ spec = do
         storage <- initStorage
         let key = (B.pack "key")
         res <- decrement storage key 5
-        value <- atomically $ Map.lookup key storage
+        value <- getOne storage key
         res `shouldBe` Nothing
         value `shouldBe` Nothing
 
@@ -179,7 +178,7 @@ spec = do
         let key = (B.pack "key")
         set storage key (B.pack "1922337203685477580810")
         res <- decrement storage key 5
-        value <- atomically $ Map.lookup key storage
+        value <- getOne storage key
         res `shouldBe` Just (B.pack "1922337203685477580805")
         value `shouldBe` Just (B.pack "1922337203685477580805")
 
@@ -188,7 +187,7 @@ spec = do
         let key = (B.pack "key")
         set storage key (B.pack "-100")
         res <- decrement storage key 5
-        value <- atomically $ Map.lookup key storage
+        value <- getOne storage key
         res `shouldBe` Just (B.pack "-105")
         value `shouldBe` Just (B.pack "-105")
 
@@ -197,7 +196,7 @@ spec = do
         let key = (B.pack "key")
         set storage key (B.pack "100")
         res <- decrement storage key 1922337203685477580715
-        value <- atomically $ Map.lookup key storage
+        value <- getOne storage key
         res `shouldBe` Just (B.pack "-1922337203685477580615")
         value `shouldBe` Just (B.pack "-1922337203685477580615")
 
@@ -207,7 +206,7 @@ spec = do
         let key = (B.pack "key")
         set storage key (B.pack "value")
         res <- append storage key (B.pack " appended")
-        value <- atomically $ Map.lookup key storage
+        value <- getOne storage key
         res `shouldBe` True
         value `shouldBe` Just (B.pack "value appended")
 
@@ -216,7 +215,7 @@ spec = do
         let key = (B.pack "key")
         set storage key (B.pack "value")
         res <- append storage key (B.pack "")
-        value <- atomically $ Map.lookup key storage
+        value <- getOne storage key
         res `shouldBe` True
         value `shouldBe` Just (B.pack "value")
 
@@ -224,7 +223,7 @@ spec = do
         storage <- initStorage
         let key = (B.pack "key")
         res <- append storage key (B.pack " appended")
-        value <- atomically $ Map.lookup key storage
+        value <- getOne storage key
         res `shouldBe` False
         value `shouldBe` Nothing
 
@@ -234,7 +233,7 @@ spec = do
         let key = (B.pack "key")
         set storage key (B.pack "value")
         res <- prepend storage key (B.pack "prepended ")
-        value <- atomically $ Map.lookup key storage
+        value <- getOne storage key
         res `shouldBe` True
         value `shouldBe` Just (B.pack "prepended value")
 
@@ -243,7 +242,7 @@ spec = do
         let key = (B.pack "key")
         set storage key (B.pack "value")
         res <- prepend storage key (B.pack "")
-        value <- atomically $ Map.lookup key storage
+        value <- getOne storage key
         res `shouldBe` True
         value `shouldBe` Just (B.pack "value")
 
@@ -251,6 +250,6 @@ spec = do
         storage <- initStorage
         let key = (B.pack "key")
         res <- prepend storage key (B.pack "prepended ")
-        value <- atomically $ Map.lookup key storage
+        value <- getOne storage key
         res `shouldBe` False
         value `shouldBe` Nothing

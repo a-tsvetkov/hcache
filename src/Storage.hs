@@ -3,6 +3,7 @@ module Storage
     initStorage
   , Storage
   , get
+  , getOne
   , set
   , delete
   , increment
@@ -17,82 +18,80 @@ import qualified Focus as Focus
 import           Data.Maybe (catMaybes)
 import qualified Data.ByteString.Char8 as ByteString
 import           Control.Monad
-import           Control.Monad.STM
-import qualified STMContainers.Map as Map
+import qualified Data.HashTable.IO.ConcurrentLinear as Map
 
 import Query
 import Serialization
 
-type Storage = Map.Map Key Value
+type Storage = Map.HashTable Key Value
 
 initStorage :: IO Storage
-initStorage = Map.newIO
+initStorage = Map.new
+
+getOne :: Storage -> Key -> IO (Maybe Value)
+getOne storage key = Map.lookup storage key
 
 get :: Storage -> [Key] -> IO [(Key, Value)]
-get storage keys = atomically $ catMaybes <$> forM keys (
+get storage keys = catMaybes <$> forM keys (
   \key -> do
-    result <- Map.lookup key storage
+    result <- getOne storage key
     return (result >>= (\v -> return (key, v)))
   )
 
 set :: Storage -> Key -> Value -> IO ()
-set storage key value = atomically $ Map.insert value key storage
+set storage key value = Map.insert storage value key
 
 add :: Storage -> Key -> Value -> IO Bool
-add storage key value = atomically $ Map.focus (
+add storage key value = Map.focus storage key (
   \v ->
     case v of
-      Just _ -> return (False, Focus.Keep)
+      Just _ -> (False, Focus.Keep)
       Nothing -> do
-        return (True, Focus.Replace value)
-  ) key storage
+        (True, Focus.Replace value)
+  )
 
 replace :: Storage -> Key -> Value -> IO Bool
-replace storage key value = atomically $ Map.focus (
+replace storage key value = Map.focus storage key (
   \v ->
     case v of
       Just _ -> do
-        return (True, Focus.Replace value)
-      Nothing -> return (False, Focus.Keep)
-  ) key storage
+        (True, Focus.Replace value)
+      Nothing -> (False, Focus.Keep)
+  )
 
 delete :: Storage -> Key -> IO Bool
-delete storage key = atomically $ do
-  Map.focus (
+delete storage key = Map.focus storage key (
     \value ->
       case value of
-        Just _ -> do
-          return (True, Focus.Remove)
-        Nothing -> return (False, Focus.Keep)
-    ) key storage
+        Just _ -> (True, Focus.Remove)
+        Nothing -> (False, Focus.Keep)
+    )
 
 increment :: Storage -> Key -> Integer -> IO (Maybe ByteString.ByteString)
-increment storage key amount = atomically $ updateInteger storage key (+amount)
+increment storage key amount = updateInteger storage key (+amount)
 
 decrement :: Storage -> Key -> Integer -> IO (Maybe ByteString.ByteString)
-decrement storage key amount = atomically $ updateInteger storage key (subtract amount)
+decrement storage key amount = updateInteger storage key (subtract amount)
 
 append :: Storage -> Key -> Value -> IO Bool
-append storage key value = atomically $ updateValue storage key $ flip (ByteString.append) value
+append storage key value = updateValue storage key $ flip (ByteString.append) value
 
 prepend :: Storage -> Key -> Value -> IO Bool
-prepend storage key value = atomically $ updateValue storage key $ ByteString.append value
+prepend storage key value = updateValue storage key $ ByteString.append value
 
-updateValue :: Storage -> Key -> (Value -> Value) -> STM Bool
-updateValue storage key f = Map.focus (
+updateValue :: Storage -> Key -> (Value -> Value) -> IO Bool
+updateValue storage key f = Map.focus storage key (
   \value ->
     case value of
-      Nothing -> return (False, Focus.Keep)
-      Just v -> do
-        return (True, Focus.Replace $ f v)
-    ) key storage
+      Nothing -> (False, Focus.Keep)
+      Just v -> (True, Focus.Replace $ f v)
+    )
 
-updateInteger :: Storage -> Key -> (Integer -> Integer) -> STM (Maybe ByteString.ByteString)
-updateInteger storage key f = Map.focus (
+updateInteger :: Storage -> Key -> (Integer -> Integer) -> IO (Maybe ByteString.ByteString)
+updateInteger storage key f = Map.focus storage key (
   \value ->
     case value >>= readInteger of
-      Nothing -> return (Nothing, Focus.Keep)
-      Just int -> do
-        let newValue = writeInteger $ f int
-        return (Just newValue, Focus.Replace $ newValue)
-  ) key storage
+      Nothing -> (Nothing, Focus.Keep)
+      Just int -> let newValue = writeInteger $ f int
+        in (Just newValue, Focus.Replace $ newValue)
+  )

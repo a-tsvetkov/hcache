@@ -5,9 +5,7 @@ module Server.ServerSpec
   ) where
 
 import Test.Hspec
-import Control.Monad.STM
 import qualified Data.ByteString.Char8 as B
-import qualified STMContainers.Map as Map
 import Server
 import Storage
 
@@ -50,7 +48,7 @@ spec = do
       it "should set value" $ do
         storage <- initStorage
         resp <- handleInput storage $ B.pack "set key value\n"
-        value <- atomically $ Map.lookup (B.pack "key") storage
+        value <- getOne storage (B.pack "key")
         resp `shouldBe` B.pack "OK\n"
         value `shouldBe` Just (B.pack "value")
 
@@ -58,7 +56,7 @@ spec = do
         storage <- initStorage
         set storage (B.pack "key") (B.pack "value")
         resp <- handleInput storage $ B.pack "delete key\n"
-        value <- atomically $ Map.lookup (B.pack "key") storage
+        value <- getOne storage (B.pack "key")
         resp `shouldBe` B.pack "OK\n"
         value `shouldBe` Nothing
 
@@ -71,7 +69,7 @@ spec = do
         storage <- initStorage
         set storage (B.pack "key") (B.pack "100")
         resp <- handleInput storage $ B.pack "incr key 5\n"
-        value <- atomically $ Map.lookup (B.pack "key") storage
+        value <- getOne storage (B.pack "key")
         resp `shouldBe` (B.pack "105\n")
         value `shouldBe` Just (B.pack "105")
 
@@ -79,7 +77,7 @@ spec = do
         storage <- initStorage
         set storage (B.pack "key") (B.pack "100")
         resp <- handleInput storage $ B.pack "incr key test\n"
-        value <- atomically $ Map.lookup (B.pack "key") storage
+        value <- getOne storage (B.pack "key")
         resp `shouldBe` B.pack "ERROR Illegal query: incr key test\n"
         value `shouldBe` Just (B.pack "100")
 
@@ -87,7 +85,7 @@ spec = do
         storage <- initStorage
         set storage (B.pack "key") (B.pack "100")
         resp <- handleInput storage $ B.pack "decr key 5\n"
-        value <- atomically $ Map.lookup (B.pack "key") storage
+        value <- getOne storage (B.pack "key")
         resp `shouldBe` (B.pack "95\n")
         value `shouldBe` Just (B.pack "95")
 
@@ -95,14 +93,14 @@ spec = do
         storage <- initStorage
         set storage (B.pack "key") (B.pack "100")
         resp <- handleInput storage $ B.pack "decr key test\n"
-        value <- atomically $ Map.lookup (B.pack "key") storage
+        value <- getOne storage (B.pack "key")
         resp `shouldBe` B.pack "ERROR Illegal query: decr key test\n"
         value `shouldBe` Just (B.pack "100")
 
       it "should add value" $ do
         storage <- initStorage
         resp <- handleInput storage $ B.pack "add key value\n"
-        value <- atomically $ Map.lookup (B.pack "key") storage
+        value <- getOne storage  (B.pack "key")
         resp `shouldBe` B.pack "OK\n"
         value `shouldBe` Just (B.pack "value")
 
@@ -110,7 +108,7 @@ spec = do
         storage <- initStorage
         set storage (B.pack "key") (B.pack "value")
         resp <- handleInput storage $ B.pack "add key newvalue\n"
-        value <- atomically $ Map.lookup (B.pack "key") storage
+        value <- getOne storage  (B.pack "key")
         resp `shouldBe` B.pack "ERROR Already exists\n"
         value `shouldBe` Just (B.pack "value")
 
@@ -118,14 +116,14 @@ spec = do
         storage <- initStorage
         set storage (B.pack "key") (B.pack "value")
         resp <- handleInput storage $ B.pack "replace key newvalue\n"
-        value <- atomically $ Map.lookup (B.pack "key") storage
+        value <- getOne storage  (B.pack "key")
         resp `shouldBe` B.pack "OK\n"
         value `shouldBe` Just (B.pack "newvalue")
 
       it "should return error when trying to replace non existing value" $ do
         storage <- initStorage
         resp <- handleInput storage $ B.pack "replace key newvalue\n"
-        value <- atomically $ Map.lookup (B.pack "key") storage
+        value <- getOne storage  (B.pack "key")
         resp `shouldBe` B.pack "ERROR Not found\n"
         value `shouldBe` Nothing
 
@@ -133,14 +131,14 @@ spec = do
         storage <- initStorage
         set storage (B.pack "key") (B.pack "value")
         resp <- handleInput storage $ B.pack "append key _appended\n"
-        value <- atomically $ Map.lookup (B.pack "key") storage
+        value <- getOne storage  (B.pack "key")
         resp `shouldBe` B.pack "OK\n"
         value `shouldBe` Just (B.pack "value_appended")
 
       it "should return error when trying to append to non existentvalue" $ do
         storage <- initStorage
         resp <- handleInput storage $ B.pack "append key _appended\n"
-        value <- atomically $ Map.lookup (B.pack "key") storage
+        value <- getOne storage  (B.pack "key")
         resp `shouldBe` B.pack "ERROR Not found\n"
         value `shouldBe` Nothing
 
@@ -148,13 +146,13 @@ spec = do
         storage <- initStorage
         set storage (B.pack "key") (B.pack "value")
         resp <- handleInput storage $ B.pack "prepend key prepended_\n"
-        value <- atomically $ Map.lookup (B.pack "key") storage
+        value <- getOne storage  (B.pack "key")
         resp `shouldBe` B.pack "OK\n"
         value `shouldBe` Just (B.pack "prepended_value")
 
       it "should return error when trying to prepend to non existentvalue" $ do
         storage <- initStorage
         resp <- handleInput storage $ B.pack "prepend key prepended_\n"
-        value <- atomically $ Map.lookup (B.pack "key") storage
+        value <- getOne storage  (B.pack "key")
         resp `shouldBe` B.pack "ERROR Not found\n"
         value `shouldBe` Nothing
