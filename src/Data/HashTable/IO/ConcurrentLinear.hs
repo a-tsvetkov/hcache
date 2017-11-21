@@ -74,7 +74,7 @@ hashKey lvl splitptr k =
     hashAtLvl :: (Hashable k) => Int -> k -> Int
     hashAtLvl l k' =
       let hashcode = hash k'
-          mask = 2^(l-1) :: Int
+          mask = 2^l - 1 :: Int
       in
         hashcode .&. mask
 
