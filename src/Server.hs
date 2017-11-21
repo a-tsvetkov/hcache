@@ -46,7 +46,7 @@ handleClient storage conn@(sock, _)  = do
         forM_ (ByteString.lines fullInput) (
           \line -> do
             response <- handleInput storage line
-            sendAll sock $ response
+            sendAll sock $ ByteString.append response $ ByteString.singleton '\n'
 
           )
       handleClient storage conn

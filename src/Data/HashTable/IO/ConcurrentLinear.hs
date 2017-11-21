@@ -182,7 +182,7 @@ split (HT htRef) = do
       return (HashTable (lvl + 1) 0 buckets' locks')
     else
     do
-      return ht
+      return (HashTable lvl (splitPtr + 1)  buckets locks)
 
   anotherLock <- lockBucket locks (splitPtr + half)
   putMVar htRef newHt
