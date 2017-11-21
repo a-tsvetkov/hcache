@@ -90,3 +90,10 @@ spec = do
         resLookup <- HT.lookup ht "foo"
         resFocus `shouldBe` "barbar"
         resLookup `shouldBe` Just "barbarbar"
+
+    context "newSized" $ do
+      it "create new sized storage" $ do
+        ht <- HT.newSized 26
+        forM_ ['a'..'z'] (\c -> HT.insert ht ("key" ++ [c])  ("value" ++ [c]))
+        res <- HT.lookup ht "keyo"
+        res `shouldBe` Just "valueo"
