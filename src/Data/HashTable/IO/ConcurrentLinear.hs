@@ -1,4 +1,5 @@
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Data.HashTable.IO.ConcurrentLinear
   (
@@ -104,18 +105,18 @@ needsSplit bucket = do
   return (size > bucketSplitSize)
 
 lookup :: (Ord k, Hashable k) => (HashTable k v) -> k -> IO (Maybe v)
-lookup ht k = readBucket ht k $ flip Bucket.lookup k
+lookup ht !k = readBucket ht k $ flip Bucket.lookup k
 
 insert :: (Ord k, Hashable k) => (HashTable k v) -> k -> v -> IO ()
-insert ht k v = do
+insert ht !k !v = do
   willSplit <- insertNoSplit ht k v
   when (willSplit) $ split ht
 
 delete :: (Ord k, Hashable k) => (HashTable k v) -> k -> IO ()
-delete ht k = writeBucket ht k $ flip Bucket.delete k
+delete ht !k = writeBucket ht k $ flip Bucket.delete k
 
 focus :: (Ord k, Hashable k) => HashTable k v -> k -> Strategy v r -> IO r
-focus ht k f = do
+focus ht !k f = do
   (val, willSplit) <- writeBucket ht k (
     \bucket -> do
       ret <- Bucket.focus bucket k f
