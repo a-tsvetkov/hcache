@@ -60,7 +60,10 @@ focus (Bucket mr) k s = do
     processDecision :: Maybe (IORef v) -> Decision v -> IO (Maybe (IORef v))
     processDecision vr Keep = return vr
     processDecision _ Remove = return Nothing
-    processDecision _ (Replace v') = do
+    processDecision vr@(Just ref) (Replace v') = do
+      writeIORef ref v'
+      return vr
+    processDecision Nothing (Replace v') = do
       vr' <- newIORef v'
       return (Just vr')
 

@@ -20,6 +20,7 @@ library
                      , Query
                      , Serialization
                      , Data.HashTable.IO.ConcurrentLinear
+                     , Control.Concurrent.RWLock
 
   other-modules:       Data.HashTable.Internal.Bucket
                      , Data.HashTable.Internal.Utils
