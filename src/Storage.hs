@@ -16,6 +16,7 @@ module Storage
 
 import qualified Focus as Focus
 import           Data.Maybe (catMaybes)
+import qualified Data.ByteString.Short as ShortBS
 import qualified Data.ByteString.Char8 as ByteString
 import           Control.Monad
 import qualified Data.HashTable.IO.ConcurrentLinear as Map
@@ -23,7 +24,23 @@ import qualified Data.HashTable.IO.ConcurrentLinear as Map
 import Query
 import Serialization
 
-type Storage = Map.HashTable Key Value
+type KeyStored = ShortBS.ShortByteString
+type ValueStored = ShortBS.ShortByteString
+
+type Storage = Map.HashTable KeyStored ValueStored
+
+
+keyToStored :: Key -> KeyStored
+keyToStored = ShortBS.toShort
+
+keyFromStored :: KeyStored -> Key
+keyFromStored = ShortBS.fromShort
+
+valueToStored :: Value -> ValueStored
+valueToStored = ShortBS.toShort
+
+valueFromStored :: ValueStored -> Value
+valueFromStored = ShortBS.fromShort
 
 initStorage :: IO Storage
 initStorage = Map.newSized defaultSize
@@ -31,7 +48,9 @@ initStorage = Map.newSized defaultSize
     defaultSize = 100000
 
 getOne :: Storage -> Key -> IO (Maybe Value)
-getOne storage key = Map.lookup storage key
+getOne storage key = do
+  vs <- Map.lookup storage $ keyToStored key
+  return (valueFromStored <$> vs)
 
 get :: Storage -> [Key] -> IO [(Key, Value)]
 get storage keys = catMaybes <$> forM keys (
@@ -41,28 +60,28 @@ get storage keys = catMaybes <$> forM keys (
   )
 
 set :: Storage -> Key -> Value -> IO ()
-set storage key value = Map.insert storage key value
+set storage key value = Map.insert storage (keyToStored key) (valueToStored value)
 
 add :: Storage -> Key -> Value -> IO Bool
-add storage key value = Map.focus storage key (
+add storage key value = Map.focus storage (keyToStored key) (
   \v ->
     case v of
       Just _ -> (False, Focus.Keep)
       Nothing -> do
-        (True, Focus.Replace value)
+        (True, Focus.Replace (valueToStored value))
   )
 
 replace :: Storage -> Key -> Value -> IO Bool
-replace storage key value = Map.focus storage key (
+replace storage key value = Map.focus storage (keyToStored key) (
   \v ->
     case v of
       Just _ -> do
-        (True, Focus.Replace value)
+        (True, Focus.Replace (valueToStored value))
       Nothing -> (False, Focus.Keep)
   )
 
 delete :: Storage -> Key -> IO Bool
-delete storage key = Map.focus storage key (
+delete storage key = Map.focus storage (keyToStored key) (
     \value ->
       case value of
         Just _ -> (True, Focus.Remove)
@@ -82,18 +101,18 @@ prepend :: Storage -> Key -> Value -> IO Bool
 prepend storage key value = updateValue storage key $ ByteString.append value
 
 updateValue :: Storage -> Key -> (Value -> Value) -> IO Bool
-updateValue storage key f = Map.focus storage key (
+updateValue storage key f = Map.focus storage (keyToStored key) (
   \value ->
     case value of
       Nothing -> (False, Focus.Keep)
-      Just v -> (True, Focus.Replace $ f v)
-    )
+      Just v -> (True, Focus.Replace $ valueToStored . f . valueFromStored $ v)
+  )
 
 updateInteger :: Storage -> Key -> (Integer -> Integer) -> IO (Maybe ByteString.ByteString)
-updateInteger storage key f = Map.focus storage key (
+updateInteger storage key f = Map.focus storage (keyToStored key) (
   \value ->
-    case value >>= readInteger of
+    case value >>= readInteger . valueFromStored of
       Nothing -> (Nothing, Focus.Keep)
       Just int -> let newValue = writeInteger $ f int
-        in (Just newValue, Focus.Replace $ newValue)
+        in (Just newValue, Focus.Replace $ valueToStored newValue)
   )
