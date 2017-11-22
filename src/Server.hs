@@ -41,7 +41,7 @@ mainLoop sock storage = forever $ do
   threadId <- forkIO $ evalStateT (handleClient storage conn) $ ShortBS.empty
   putStrLn $ "Forked new thread for " ++ (show $ snd conn) ++ " " ++ (show threadId)
 
-handleClient :: Storage.Storage ->  (Socket, SockAddr) -> StateT ShortByteString IO ()
+handleClient :: Storage.Storage -> (Socket, SockAddr) -> StateT ShortByteString IO ()
 handleClient storage conn@(sock, _)  = do
   input <- lift $ recv sock maxRecv
   if (ByteString.length input /= 0)
@@ -56,7 +56,7 @@ handleClient storage conn@(sock, _)  = do
         forM_ (ByteString.lines fullInput) (
           \line -> do
             response <- handleInput storage line
-            sendAll sock $ ByteString.append response $ ByteString.singleton '\n'
+            sendAll sock $ ByteString.append response $ bs "\n"
           )
       handleClient storage conn
     else

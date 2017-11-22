@@ -32,10 +32,10 @@ data HashTable k v = HT
   }
 
 data HashTable_ k v = HashTable
-  { _level :: {-# UNPACK #-} !Int
-  , _splitPtr :: {-# UNPACK #-} !Int
-  , _buckets :: {-# UNPACK #-} !(IOVector (Bucket k v))
-  , _locks :: {-# UNPACK #-} !(IOVector RWLock)
+  { level :: {-# UNPACK #-} !Int
+  , splitPtr :: {-# UNPACK #-} !Int
+  , buckets :: {-# UNPACK #-} !(IOVector (Bucket k v))
+  , locks :: {-# UNPACK #-} !(IOVector RWLock)
   }
 
 bucketSplitSize :: Int
@@ -145,36 +145,43 @@ clearBucket buckets i = do
   emptyBucket <- Bucket.new
   Vector.write buckets i emptyBucket
 
+incremetSplitPtr :: (Ord k, Hashable k) => (HashTable_ k v) -> IO (HashTable_ k v)
+incremetSplitPtr (HashTable {level, splitPtr, buckets, locks}) =
+    let half = 2 ^ (level - 1)
+        next = succ splitPtr
+    in
+      -- Resize buckets and locks arrays if needed
+      if (next >= half)
+      then
+        do
+          let size = 2 ^ level
+          buckets' <- Vector.grow buckets (size)
+          locks' <- Vector.grow locks (size)
+          forM_ [size..(2 * size - 1)] (
+            \idx -> do
+              clearBucket buckets' idx
+              Vector.write locks' idx =<< Lock.new
+            )
+          return (HashTable (succ level) 0 buckets' locks')
+      else
+        do
+          return (HashTable level next  buckets locks)
+
+
 split :: (Ord k, Hashable k) => (HashTable k v) -> IO ()
 split (HT globLock htRef) = do
   Lock.acquireWrite globLock
-  (HashTable lvl splitPtr buckets locks) <- readIORef htRef
-  -- Resize buckets and locks arrays if needed
-  let half = 2 ^ (lvl - 1)
-  newHt@(HashTable _ _ newBuckets newLocks) <- if (splitPtr+1 >= half)
-    then
-    do
-      let size = 2 ^ lvl
-      buckets' <- Vector.grow buckets (size)
-      locks' <- Vector.grow locks (size)
-      forM_ [size..(2 * size - 1)] (
-        \idx -> do
-          clearBucket buckets' idx
-          Vector.write locks' idx =<< Lock.new
-        )
-      return (HashTable (succ lvl) 0 buckets' locks')
-    else
-    do
-      return (HashTable lvl (succ splitPtr)  buckets locks)
+  oldHt@(HashTable oldLevel oldSplitPtr _ _) <- readIORef htRef
+  newHt@(HashTable _ _ newBuckets newLocks) <- incremetSplitPtr oldHt
 
   -- rehash bucket at old splitPtr
-  lock <- Vector.read newLocks splitPtr
-  rehashLock <- Vector.read newLocks (splitPtr + half)
+  lock <- Vector.read newLocks oldSplitPtr
+  rehashLock <- Vector.read newLocks (oldSplitPtr + (2 ^ (oldLevel - 1)))
   writeIORef htRef newHt
   Lock.withWrite lock $ do
     Lock.withWrite rehashLock $ do
       Lock.releaseWrite globLock
-      bucket <- Vector.read newBuckets splitPtr
-      clearBucket buckets splitPtr
+      bucket <- Vector.read newBuckets oldSplitPtr
+      clearBucket newBuckets oldSplitPtr
       _ <- Bucket.forM bucket $ uncurry (insertNoLock newHt)
       return ()
