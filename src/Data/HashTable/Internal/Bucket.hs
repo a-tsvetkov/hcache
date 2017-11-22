@@ -17,6 +17,7 @@ import           Data.IORef
 import           Data.Maybe (fromJust)
 import qualified Data.Map.Strict as Map
 import           Focus (Decision(..), Strategy)
+import qualified Focus as Focus
 import qualified Control.Monad as Monad
 
 data Bucket k v = Bucket !(IORef (Map.Map k (IORef v)))
@@ -37,13 +38,7 @@ lookup (Bucket mr) !k = do
   readValue $ Map.lookup k m
 
 insert :: Ord k => Bucket k v -> k -> v -> IO ()
-insert (Bucket mr) !k !v = do
-  m <- readIORef mr
-  case Map.lookup k m of
-    Just ref -> writeIORef ref v
-    Nothing -> do
-      vr <- newIORef v
-      writeIORef mr $ Map.insert k vr m
+insert m !k !v = focus m k $ Focus.insert v
 
 delete :: Ord k => Bucket k v -> k -> IO ()
 delete (Bucket mr) !k  = modifyIORef mr $ Map.delete k
