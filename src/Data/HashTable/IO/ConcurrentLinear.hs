@@ -196,5 +196,4 @@ split (HT globLock htRef) = do
       Lock.releaseWrite globLock
       bucket <- Vector.read newBuckets oldSplitPtr
       clearBucket newBuckets oldSplitPtr
-      _ <- Bucket.forM bucket $ uncurry (insertNoLock newHt)
-      return ()
+      Bucket.forM_ bucket $ uncurry (insertNoLock newHt)

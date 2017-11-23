@@ -10,10 +10,13 @@ module Data.HashTable.Internal.Bucket
   , delete
   , focus
   , forM
+  , mapM
+  , forM_
+  , mapM_
   , assocs
   ) where
 
-import           Prelude hiding (lookup, mapM)
+import           Prelude hiding (lookup, mapM, mapM_)
 import           Data.IORef
 import           Data.Maybe (fromJust)
 import qualified Data.Map.Strict as Map
@@ -78,8 +81,16 @@ forM (Bucket mr) f = do
         f (k, v)
     )
 
+forM_ :: Ord k => Bucket k v -> ((k, v) -> IO a) -> IO ()
+forM_ b f = do
+  _ <- forM b f
+  return ()
+
 mapM :: Ord k => ((k, v) -> IO a) -> Bucket k v -> IO [a]
 mapM = flip forM
+
+mapM_ :: Ord k => ((k, v) -> IO a) -> Bucket k v -> IO ()
+mapM_ = flip forM_
 
 assocs :: Ord k => Bucket k v  -> IO [(k, v)]
 assocs = mapM (return . id)
