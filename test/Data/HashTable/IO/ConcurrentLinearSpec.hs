@@ -67,6 +67,17 @@ spec = do
         res' `shouldBe` Just "valuem"
 
     context "focus" $ do
+      it "should supply value to the function" $ do
+        ht <- HT.new
+        HT.insert ht "foo" "bar"
+        resFocus <- HT.focus ht "foo" (\v -> (v, Keep))
+        resFocus `shouldBe` Just "bar"
+
+      it "should supply Nothing if value doesnt exist" $ do
+        ht <- HT.new :: IO (HT.HashTable String String)
+        resFocus <- HT.focus ht "foo" (\v -> (v, Keep))
+        resFocus `shouldBe` Nothing
+
       it "should keep value" $ do
         ht <- HT.new
         HT.insert ht "foo" "bar"
@@ -91,9 +102,38 @@ spec = do
         resFocus `shouldBe` "barbar"
         resLookup `shouldBe` Just "barbarbar"
 
+      it "should create new value" $ do
+        ht <- HT.new
+        resFocus <- HT.focus ht "foo" (\_ -> ("barbar", Replace "barbarbar"))
+        resLookup <- HT.lookup ht "foo"
+        resFocus `shouldBe` "barbar"
+        resLookup `shouldBe` Just "barbarbar"
+
     context "newSized" $ do
       it "create new sized storage" $ do
         ht <- HT.newSized 26
         forM_ ['a'..'z'] (\c -> HT.insert ht ("key" ++ [c])  ("value" ++ [c]))
         res <- HT.lookup ht "keyo"
         res `shouldBe` Just "valueo"
+
+    context "resize" $ do
+      it "should preserve all the values" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) $ take 32 ['0'..'z']
+        ht <- HT.new
+        forM_ assocs $ uncurry (HT.insert ht)
+        forM_ assocs (
+          \(k, v) -> do
+            val <- HT.lookup ht k
+            val `shouldBe` Just v
+          )
+
+    context "rehash" $ do
+      it "should preserve all the values" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) $ take 64 ['0'..'z']
+        ht <- HT.newSized 64
+        forM_ assocs $ uncurry (HT.insert ht)
+        forM_ assocs (
+          \(k, v) -> do
+            val <- HT.lookup ht k
+            val `shouldBe` Just v
+          )
