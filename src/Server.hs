@@ -65,7 +65,7 @@ handleClient storage conn@(sock, _)  = do
       putStrLn $ show threadId ++ " connection reset by peer"
       close sock
   where
-    maxRecv = 1024
+    maxRecv = 4096
 
 
 handleInput :: Storage.Storage -> ByteString -> IO ByteString
