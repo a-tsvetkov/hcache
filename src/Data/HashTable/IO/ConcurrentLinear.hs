@@ -10,6 +10,7 @@ module Data.HashTable.IO.ConcurrentLinear
   , insert
   , delete
   , focus
+  , assocs
   ) where
 
 import           Prelude hiding (lookup)
@@ -27,8 +28,8 @@ import           Control.Monad
 import           Focus (Strategy)
 
 data HashTable k v = HT
-  { _globalLock :: RWLock
-  , _htRef :: IORef (HashTable_ k v)
+  { globalLock :: RWLock
+  , htRef :: IORef (HashTable_ k v)
   }
 
 data HashTable_ k v = HashTable
@@ -67,14 +68,14 @@ newSized size = do
 
 hashKey :: (Hashable k) => (Ord k, Hashable k) => (HashTable_ k v) -> k -> Int
 hashKey (HashTable lvl splitPtr _ _) k =
-  let h = hashAtLvl (lvl-1) k
+  let h = hashAtLvl (pred lvl) k
   in
     if (h < splitPtr) then hashAtLvl lvl k else h
   where
     hashAtLvl :: (Hashable k) => Int -> k -> Int
     hashAtLvl l k' =
       let hashcode = hash k'
-          mask = 2^l - 1 :: Int
+          mask = 2 ^ l - 1 :: Int
       in
         hashcode .&. mask
 
@@ -125,6 +126,18 @@ focus ht !k f = do
     )
   when willSplit $ split ht
   return val
+
+-- Mainly for test purpose not expected to have optimal performance
+assocs :: (Ord k, Hashable k) => (HashTable k v) -> IO [(k, v)]
+assocs HT {globalLock, htRef} = do
+  Lock.withRead globalLock $ do
+    (HashTable level _ buckets locks) <- readIORef htRef
+    forM [0 .. (2 ^ level - 1)] (
+      \i -> do
+        bucket <- Vector.read buckets i
+        lock <- Vector.read locks i
+        Lock.withRead lock $ Bucket.assocs bucket
+      ) >>= (return . concat)
 
 insertNoSplit :: (Ord k, Hashable k) => (HashTable k v) -> k -> v -> IO Bool
 insertNoSplit ht k v = do

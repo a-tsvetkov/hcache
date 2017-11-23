@@ -5,6 +5,7 @@ module Data.HashTable.IO.ConcurrentLinearSpec
   ) where
 
 import           Test.Hspec
+import           Data.List
 import           Control.Monad
 import qualified Data.HashTable.IO.ConcurrentLinear as HT
 import           Focus (Decision(..))
@@ -127,6 +128,14 @@ spec = do
             val `shouldBe` Just v
           )
 
+      it "should not proce value duplicates" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) $ take 32 ['0'..'z']
+        ht <- HT.new
+        forM_ assocs $ uncurry (HT.insert ht)
+        gotAssocs <- HT.assocs ht
+        length gotAssocs `shouldBe` 32
+        sort gotAssocs `shouldBe` assocs
+
     context "rehash" $ do
       it "should preserve all the values" $ do
         let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) $ take 64 ['0'..'z']
@@ -137,3 +146,11 @@ spec = do
             val <- HT.lookup ht k
             val `shouldBe` Just v
           )
+
+      it "should not proce value duplicates" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) $ take 64 ['0'..'z']
+        ht <- HT.new
+        forM_ assocs $ uncurry (HT.insert ht)
+        gotAssocs <- HT.assocs ht
+        length gotAssocs `shouldBe` 64
+        sort gotAssocs `shouldBe` assocs
