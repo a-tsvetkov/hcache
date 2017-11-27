@@ -45,7 +45,7 @@ insert :: Ord k => Bucket k v -> k -> v -> IO ()
 insert m !k !v = focus m k $ Focus.insert v
 
 delete :: Ord k => Bucket k v -> k -> IO ()
-delete (Bucket mr) !k  = modifyIORef mr $ Map.delete k
+delete (Bucket mr) !k  = modifyIORef' mr $ Map.delete k
 
 focus :: Ord k => Bucket k v -> k -> Strategy v r -> IO r
 focus (Bucket mr) !k s = do

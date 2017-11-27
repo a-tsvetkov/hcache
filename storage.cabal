@@ -20,6 +20,7 @@ library
                      , Query
                      , Serialization
                      , Data.HashTable.IO.ConcurrentLinear
+                     , Data.SkipList.IO
                      , Control.Concurrent.RWLock
 
   other-modules:       Data.HashTable.Internal.Bucket
@@ -34,6 +35,8 @@ library
                      , focus
                      , vector
                      , hashable
+                     , atomic-primops
+                     , random
   default-language:    Haskell2010
 
 executable storage
@@ -55,6 +58,7 @@ test-suite storage-test
                      , Serialization.SerializationSpec
                      , Server.ServerSpec
                      , Data.HashTable.IO.ConcurrentLinearSpec
+                     , Data.SkipList.IOSpec
   build-depends:       base
                      , storage
                      , focus

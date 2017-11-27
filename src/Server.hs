@@ -14,7 +14,7 @@ import           Network.Socket hiding (send, sendTo, recv, recvFrom)
 import           Network.Socket.ByteString
 import           Control.Concurrent
 import           Control.Monad
-import           Control.Monad.State.Lazy
+import           Control.Monad.State.Strict
 
 import           Query
 import qualified Storage
