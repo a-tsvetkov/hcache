@@ -94,13 +94,6 @@ readBucket (HT globLock htRef) k f = do
     (bucket, lock) <- getLockAndBucket ht k
     Lock.withRead lock $ f bucket
 
-writeBucket :: (Ord k, Hashable k) => (HashTable k v) -> k -> (Bucket k v -> IO a) -> IO a
-writeBucket (HT globLock htRef) k f = do
-  Lock.withRead globLock $ do
-    ht <- readIORef htRef
-    (bucket, lock) <- getLockAndBucket ht k
-    Lock.withWrite lock $ f bucket
-
 needsSplit :: (Ord k, Hashable k) => Bucket k v -> IO Bool
 needsSplit bucket = do
   size <- Bucket.size bucket
@@ -115,15 +108,15 @@ insert ht !k !v = do
   when (willSplit) $ split ht
 
 delete :: (Ord k, Hashable k) => (HashTable k v) -> k -> IO ()
-delete ht !k = writeBucket ht k $ flip Bucket.delete k
+delete ht !k = readBucket ht k $ flip Bucket.delete k
 
 adjust :: (Ord k, Hashable k) => HashTable k v -> k -> (v -> (v, r)) -> IO (Maybe r)
 adjust ht !k f = do
-  writeBucket ht k (\bucket -> Bucket.adjust bucket k f)
+  readBucket ht k (\bucket -> Bucket.adjust bucket k f)
 
 focus :: (Ord k, Hashable k) => HashTable k v -> k -> Strategy v r -> IO r
 focus ht !k f = do
-  (val, willSplit) <- writeBucket ht k (
+  (val, willSplit) <- readBucket ht k (
     \bucket -> do
       ret <- Bucket.focus bucket k f
       s <- needsSplit bucket
@@ -146,7 +139,7 @@ assocs HT {globalLock, htRef} = do
 
 insertNoSplit :: (Ord k, Hashable k) => (HashTable k v) -> k -> v -> IO Bool
 insertNoSplit ht k v = do
-  writeBucket ht k (
+  readBucket ht k (
     \bucket-> do
       Bucket.insert bucket k v
       needsSplit bucket
