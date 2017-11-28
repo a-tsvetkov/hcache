@@ -24,6 +24,11 @@ spec = do
         res <- SL.lookup sl "foo"
         res `shouldBe` Just "bar"
 
+      it "should not fail on empty list" $ do
+        sl <- (SL.new :: IO (SL.SkipList String String))
+        res <- SL.lookup sl "foo"
+        res `shouldBe` Nothing
+
       it "should get value when multiple values exist" $ do
         sl <- SL.new
         forM_ ['a'..'z'] (\c -> SL.insert sl ("key" ++ [c])  ("value" ++ [c]))
@@ -299,9 +304,49 @@ spec = do
         resLookup `shouldBe` Nothing
 
     context "size" $ do
+      it "should shoul be 0 if empty" $ do
+        sl <- (SL.new :: IO (SL.SkipList String String))
+        size <- SL.size sl
+        size `shouldBe` 0
+
       it "should return correct count after insert" $ do
         let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['a'..'z']
         sl <- SL.new
         forM_ assocs $ uncurry (SL.insert sl)
         size <- SL.size sl
-        size `shouldBe` 26
+        size `shouldBe` length assocs
+
+      it "should return correct count after delete" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) $ ['a'..'z']
+            (d, r) = partition (odd . fst) $ zip [0..] assocs
+            delete = map snd d
+            remain = map snd r
+        sl <- SL.new
+        forM_ assocs $ uncurry (SL.insert sl)
+        forM_ delete $ SL.delete sl . fst
+        size <- SL.size sl
+        size `shouldBe` length remain
+
+    context "assocs" $ do
+      it "should be empty list for empty SkipList" $ do
+        sl <- (SL.new :: IO (SL.SkipList String String))
+        a <- SL.assocs sl
+        a `shouldBe` []
+
+      it "should return all inserted values" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['a'..'z']
+        sl <- SL.new
+        forM_ assocs $ uncurry (SL.insert sl)
+        a <- SL.assocs sl
+        a `shouldBe` assocs
+
+      it "should not return deleted values" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) $ ['a'..'z']
+            (d, r) = partition (odd . fst) $ zip [0..] assocs
+            delete = map snd d
+            remain = map snd r
+        sl <- SL.new
+        forM_ assocs $ uncurry (SL.insert sl)
+        forM_ delete $ SL.delete sl . fst
+        a <- SL.assocs sl
+        a `shouldBe` remain

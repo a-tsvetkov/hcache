@@ -226,16 +226,15 @@ stepBack = state (fromJust . uncons)
 bottomLevel :: (Ord k) => StateT (Path k v) IO ([Node k v])
 bottomLevel = do
   _ <- bottom
-  _ <- stepForward
-  nodes <- getLevel
-  return [n | n@Leaf{} <- nodes]
+  reverse <$> getLeafs
   where
-    getLevel :: (Ord k) => StateT (Path k v) IO ([Node k v])
-    getLevel = do
+    getLeafs :: (Ord k) => StateT (Path k v) IO ([Node k v])
+    getLeafs = do
       node <- stepForward
       case node of
         Nil -> return []
-        _ -> (node:) <$> getLevel
+        Leaf{} -> (node:) <$> getLeafs
+        _ -> getLeafs
 
 bottom :: (Ord k) => StateT (Path k v) IO (Node k v)
 bottom = do
@@ -245,11 +244,12 @@ bottom = do
     _-> liftIO $ return $ peekTicket . nextTicket $ lastStep
 
   case downNode of
-    Internal{} -> do
+    Leaf{} -> return downNode
+    Head{} -> return downNode
+    _ -> do
       t <- liftIO $ readForCAS (next downNode)
       modify ((Down downNode t):)
       bottom
-    _ -> return downNode
 
 stepForward :: (Ord k) => StateT (Path k v) IO (Node k v)
 stepForward = do

@@ -21,12 +21,10 @@ module Data.HashTable.Internal.Bucket
 import           Prelude hiding (lookup, mapM, mapM_)
 import           Data.Atomics
 import           Data.IORef
-import           Data.Maybe (fromJust, isJust, isNothing)
-import qualified Data.Map.Strict as Map
+import           Data.Maybe (isJust, isNothing)
 import           Data.SkipList.IO (SkipList)
 import qualified Data.SkipList.IO as SkipList
 import           Focus (Decision(..), Strategy)
-import qualified Focus as Focus
 import qualified Control.Monad as Monad
 
 data Bucket k v = Bucket {items :: SkipList k v, numItems :: IORef Int}
