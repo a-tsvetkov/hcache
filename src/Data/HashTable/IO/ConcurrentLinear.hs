@@ -9,6 +9,7 @@ module Data.HashTable.IO.ConcurrentLinear
   , lookup
   , insert
   , delete
+  , adjust
   , focus
   , assocs
   ) where
@@ -45,22 +46,22 @@ bucketSplitSize = 16
 fillFactor :: Double
 fillFactor = 1.3
 
-createBucketArray :: Int -> IO (IOVector (Bucket k v))
+createBucketArray :: (Ord k) => Int -> IO (IOVector (Bucket k v))
 createBucketArray size = Vector.replicateM size Bucket.new
 
 createLockArray :: Int -> IO (IOVector RWLock)
 createLockArray size = Vector.replicateM size Lock.new
 
-newLeveled :: Int -> IO (HashTable k v)
+newLeveled :: (Ord k) => Int -> IO (HashTable k v)
 newLeveled level = do
   let size = 2^level
   ht <- HashTable level 0 <$> createBucketArray size <*> createLockArray size
   HT <$> Lock.new <*> newIORef ht
 
-new :: IO (HashTable k v)
+new :: (Ord k) => IO (HashTable k v)
 new = newLeveled 1
 
-newSized :: Int -> IO (HashTable k v)
+newSized :: (Ord k) => Int -> IO (HashTable k v)
 newSized size = do
   let k = fromIntegral $ ceiling (fromIntegral size * fillFactor / fromIntegral bucketSplitSize)
       level = max 1 (fromEnum $ log2 k)
@@ -116,6 +117,10 @@ insert ht !k !v = do
 delete :: (Ord k, Hashable k) => (HashTable k v) -> k -> IO ()
 delete ht !k = writeBucket ht k $ flip Bucket.delete k
 
+adjust :: (Ord k, Hashable k) => HashTable k v -> k -> (v -> (v, r)) -> IO (Maybe r)
+adjust ht !k f = do
+  writeBucket ht k (\bucket -> Bucket.adjust bucket k f)
+
 focus :: (Ord k, Hashable k) => HashTable k v -> k -> Strategy v r -> IO r
 focus ht !k f = do
   (val, willSplit) <- writeBucket ht k (
@@ -153,7 +158,7 @@ insertNoLock ht@(HashTable _ _ buckets _) k v = do
   bucket <- Vector.read buckets h
   Bucket.insert bucket k v
 
-clearBucket :: IOVector (Bucket k v) -> Int -> IO ()
+clearBucket :: (Ord k) => IOVector (Bucket k v) -> Int -> IO ()
 clearBucket buckets i = do
   emptyBucket <- Bucket.new
   Vector.write buckets i emptyBucket

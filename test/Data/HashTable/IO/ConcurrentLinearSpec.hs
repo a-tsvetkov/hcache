@@ -110,6 +110,41 @@ spec = do
         resFocus `shouldBe` "barbar"
         resLookup `shouldBe` Just "barbarbar"
 
+    context "adjust" $ do
+      it "should supply value to the function" $ do
+        ht <- HT.new
+        HT.insert ht "foo" "bar"
+        resAdjust <- HT.adjust ht "foo" (\v -> (v, v))
+        resAdjust `shouldBe` Just "bar"
+
+      it "should not execute function if value does not exist" $ do
+        ht <- HT.new :: IO (HT.HashTable String String)
+        resAdjust <- HT.adjust ht "foo" (\v -> (v, v))
+        resAdjust `shouldBe` Nothing
+
+      it "should keep value" $ do
+        ht <- HT.new
+        HT.insert ht "foo" "bar"
+        resAdjust <- HT.adjust ht "foo" (\v -> (v, "barbar"))
+        resLookup <- HT.lookup ht "foo"
+        resAdjust `shouldBe` Just "barbar"
+        resLookup `shouldBe` Just "bar"
+
+      it "should update value" $ do
+        ht <- HT.new
+        HT.insert ht "foo" "bar"
+        resAdjust <- HT.adjust ht "foo" (\_ -> ("barbarbar", "barbar"))
+        resLookup <- HT.lookup ht "foo"
+        resAdjust `shouldBe` Just "barbar"
+        resLookup `shouldBe` Just "barbarbar"
+
+      it "should not create new value" $ do
+        ht <- HT.new
+        resAdjust <- HT.adjust ht "foo" (\_ -> ("barbarbar", "barbar"))
+        resLookup <- HT.lookup ht "foo"
+        resAdjust `shouldBe` Nothing
+        resLookup `shouldBe` Nothing
+
     context "newSized" $ do
       it "create new sized storage" $ do
         ht <- HT.newSized 26

@@ -5,10 +5,14 @@ module Data.SkipList.IO
   (
     SkipList
   , new
+  , newMaxLevel
+  , size
   , lookup
   , insert
   , delete
   , focus
+  , adjust
+  , assocs
   ) where
 
 import Prelude hiding (lookup)
@@ -41,6 +45,25 @@ defaultMaxLevel = 16
 new :: (Ord k) => IO (SkipList k v)
 new = do
   newMaxLevel defaultMaxLevel
+
+size :: (Ord k) => SkipList k v -> IO Int
+size SkipList{headRef} = do
+  headTicket <- readForCAS headRef
+  evalStateT (countLeafs) [Start headTicket]
+  where
+    countLeafs :: (Ord k) => StateT (Path k v) IO Int
+    countLeafs = do
+      _ <- bottom
+      doCount
+
+    doCount :: (Ord k) => StateT (Path k v) IO Int
+    doCount = do
+      node <- stepForward
+      case node of
+        Nil -> return 0
+        Leaf{} -> succ <$> doCount
+        _ -> doCount
+
 
 newMaxLevel :: (Ord k) => Int -> IO (SkipList k v)
 newMaxLevel maxLevel = do
@@ -78,6 +101,24 @@ delete SkipList{headRef} !k = do
   case res of
     Nothing -> return ()
     Just node -> evalStateT (deleteNode node) path
+
+assocs :: (Ord k) => SkipList k v -> IO [(k, v)]
+assocs SkipList{headRef} = do
+  headTicket <- readForCAS headRef
+  nodes <- evalStateT (bottomLevel) [Start headTicket]
+  forM nodes (
+    \node -> do
+      val <- readIORef (value node)
+      return ((key node), val)
+    )
+
+adjust :: (Ord k) => SkipList k v -> k -> (v -> (v, r)) -> IO (Maybe r)
+adjust SkipList{headRef} !k f = do
+  headTicket <- readForCAS headRef
+  res  <- evalStateT (findLeafByKey k) [Start headTicket]
+  case res of
+    Just node -> Just <$> atomicModifyIORefCAS (value node) f
+    Nothing -> return Nothing
 
 focus :: (Ord k) => SkipList k v -> k -> Strategy v r -> IO r
 focus SkipList{headRef} !k strategy = do
@@ -181,6 +222,20 @@ backAndDown = do
 
 stepBack :: StateT (Path k v) IO (PathItem k v)
 stepBack = state (fromJust . uncons)
+
+bottomLevel :: (Ord k) => StateT (Path k v) IO ([Node k v])
+bottomLevel = do
+  _ <- bottom
+  _ <- stepForward
+  nodes <- getLevel
+  return [n | n@Leaf{} <- nodes]
+  where
+    getLevel :: (Ord k) => StateT (Path k v) IO ([Node k v])
+    getLevel = do
+      node <- stepForward
+      case node of
+        Nil -> return []
+        _ -> (node:) <$> getLevel
 
 bottom :: (Ord k) => StateT (Path k v) IO (Node k v)
 bottom = do

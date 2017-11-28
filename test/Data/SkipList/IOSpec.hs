@@ -262,3 +262,46 @@ spec = do
         resLookup <- SL.lookup sl "foo"
         resFocus `shouldBe` "barbar"
         resLookup `shouldBe` Just "barbarbar"
+
+    context "adjust" $ do
+      it "should supply value to the function" $ do
+        sl <- SL.new
+        SL.insert sl "foo" "bar"
+        res <- SL.adjust sl "foo" (\v -> (v, v))
+        res `shouldBe` Just "bar"
+
+      it "should not execute function if value doesnt exist" $ do
+        sl <- SL.new :: IO (SL.SkipList String String)
+        resAdjust <- SL.adjust sl "foo" (\v -> (v, v))
+        resAdjust `shouldBe` Nothing
+
+      it "should keep value" $ do
+        sl <- SL.new
+        SL.insert sl "foo" "bar"
+        resAdjust <- SL.adjust sl "foo" (\v -> (v, "barbar"))
+        resLookup <- SL.lookup sl "foo"
+        resAdjust `shouldBe` Just "barbar"
+        resLookup `shouldBe` Just "bar"
+
+      it "should update value" $ do
+        sl <- SL.new
+        SL.insert sl "foo" "bar"
+        resAdjust <- SL.adjust sl "foo" (\_ -> ("barbarbar", "barbar"))
+        resLookup <- SL.lookup sl "foo"
+        resAdjust `shouldBe` Just "barbar"
+        resLookup `shouldBe` Just "barbarbar"
+
+      it "should not create new value" $ do
+        sl <- SL.new
+        resAdjust <- SL.adjust sl "foo" (\_ -> ("barbarbar", "barbar"))
+        resLookup <- SL.lookup sl "foo"
+        resAdjust `shouldBe` Nothing
+        resLookup `shouldBe` Nothing
+
+    context "size" $ do
+      it "should return correct count after insert" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['a'..'z']
+        sl <- SL.new
+        forM_ assocs $ uncurry (SL.insert sl)
+        size <- SL.size sl
+        size `shouldBe` 26
