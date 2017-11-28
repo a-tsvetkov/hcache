@@ -37,6 +37,7 @@ library
                      , hashable
                      , atomic-primops
                      , random
+                     , transformers
   default-language:    Haskell2010
 
 executable storage
