@@ -5,8 +5,9 @@ module Data.SkipList.IOSpec
   ) where
 
 import           Test.Hspec
-import           Data.List
+import           Data.List (partition)
 import           Control.Monad
+import qualified Control.Monad.Parallel as P
 import qualified Data.SkipList.IO as SL
 import           Focus (Decision(..))
 
@@ -84,11 +85,34 @@ spec = do
         res `shouldBe` Just "bar"
 
       it "should preserve existing values" $ do
-        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) $ take 32 ['0'..'z']
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['0'..'z']
         sl <- SL.new
         forM_ assocs $ uncurry (SL.insert sl)
         SL.insert sl "foo" "bar"
         forM_ assocs (
+          \(k, v) -> do
+            val <- SL.lookup sl k
+            val `shouldBe` Just v
+          )
+
+    context "parallel insert" $ do
+      it "should not lose values" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['0'..'z']
+        sl <- SL.new
+        P.forM_ assocs $ uncurry (SL.insert sl)
+        forM_ assocs (
+          \(k, v) -> do
+            val <- SL.lookup sl k
+            val `shouldBe` Just v
+          )
+
+      it "should preserve existing values" $ do
+        let assocs1 = map (\c -> ("key" ++ [c], "value" ++ [c])) ['0'..'z']
+            assocs2 = map (\c -> ("k" ++ [c], "v" ++ [c])) ['0'..'z']
+        sl <- SL.new
+        forM_ assocs1 $ uncurry (SL.insert sl)
+        P.forM_ assocs2 $ uncurry (SL.insert sl)
+        forM_ assocs1 (
           \(k, v) -> do
             val <- SL.lookup sl k
             val `shouldBe` Just v
@@ -103,7 +127,7 @@ spec = do
         res `shouldBe` Nothing
 
       it "should not interact with other values" $ do
-        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) $ take 32 ['0'..'z']
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['0'..'z']
         sl <- SL.new
         forM_ assocs $ uncurry $ SL.insert sl
         SL.delete sl "keyk"
@@ -115,8 +139,35 @@ spec = do
             val `shouldBe` Just v
           )
 
+      it "should not interact with other values if in between" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) $ ['0'..'z']
+            (d, r) = partition (odd . fst) $ zip [0..] assocs
+            delete = map snd d
+            remain = map snd r
+        sl <- SL.new
+        forM_ assocs $ uncurry (SL.insert sl)
+        forM_ delete $ SL.delete sl . fst
+        forM_ remain (
+          \(k, v) -> do
+            val <- SL.lookup sl k
+            val `shouldBe` Just v
+          )
+
+      it "should do nothing if value does not exist" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['0'..'z']
+        sl <- SL.new
+        forM_ assocs $ uncurry $ SL.insert sl
+        SL.delete sl "foo"
+        res <- SL.lookup sl "foo"
+        res `shouldBe` Nothing
+        forM_ assocs (
+          \(k, v) -> do
+            val <- SL.lookup sl k
+            val `shouldBe` Just v
+          )
+
       it "should delete smallest value" $ do
-        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) $ take 32 ['0'..'z']
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['0'..'z']
         sl <- SL.new
         forM_ assocs $ uncurry $ SL.insert sl
         SL.delete sl "keya"
@@ -124,9 +175,90 @@ spec = do
         res `shouldBe` Nothing
 
       it "should delete biggest" $ do
-        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) $ take 32 ['0'..'z']
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['0'..'z']
         sl <- SL.new
         forM_ assocs $ uncurry $ SL.insert sl
         SL.delete sl "keyz"
-        res <- SL.lookup sl "keya"
+        res <- SL.lookup sl "keyz"
         res `shouldBe` Nothing
+
+    context "parallel delete" $ do
+      it "sould delete all the values" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['0'..'z']
+        sl <- SL.new
+        forM_ assocs $ uncurry $ SL.insert sl
+        P.forM_ assocs $ SL.delete sl . fst
+        forM_ assocs (
+          \(k, _) -> do
+            val <- SL.lookup sl k
+            val `shouldBe` Nothing
+          )
+
+      it "should not interact with other values aside" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) $ ['0'..'z']
+            (delete, remain) = splitAt 32 assocs
+        sl <- SL.new
+        forM_ assocs $ uncurry (SL.insert sl)
+        P.forM_ delete $ SL.delete sl . fst
+        forM_ remain (
+          \(k, v) -> do
+            val <- SL.lookup sl k
+            val `shouldBe` Just v
+          )
+
+      it "should not interact with other values if in between" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) $ ['0'..'z']
+            (d, r) = partition (odd . fst) $ zip [0..] assocs
+            delete = map snd d
+            remain = map snd r
+        sl <- SL.new
+        forM_ assocs $ uncurry (SL.insert sl)
+        P.forM_ delete $ SL.delete sl . fst
+        forM_ remain (
+          \(k, v) -> do
+            val <- SL.lookup sl k
+            val `shouldBe` Just v
+          )
+
+    context "focus" $ do
+      it "should supply value to the function" $ do
+        sl <- SL.new
+        SL.insert sl "foo" "bar"
+        resFocus <- SL.focus sl "foo" (\v -> (v, Keep))
+        resFocus `shouldBe` Just "bar"
+
+      it "should supply Nothing if value doesnt exist" $ do
+        sl <- SL.new :: IO (SL.SkipList String String)
+        resFocus <- SL.focus sl "foo" (\v -> (v, Keep))
+        resFocus `shouldBe` Nothing
+
+      it "should keep value" $ do
+        sl <- SL.new
+        SL.insert sl "foo" "bar"
+        resFocus <- SL.focus sl "foo" (\_ -> ("barbar", Keep))
+        resLookup <- SL.lookup sl "foo"
+        resFocus `shouldBe` "barbar"
+        resLookup `shouldBe` Just "bar"
+
+      it "should delete value" $ do
+        sl <- SL.new
+        SL.insert sl "foo" "bar"
+        resFocus <- SL.focus sl "foo" (\_ -> ("barbar", Remove))
+        resLookup <- SL.lookup sl "foo"
+        resFocus `shouldBe` "barbar"
+        resLookup `shouldBe` Nothing
+
+      it "should update value" $ do
+        sl <- SL.new
+        SL.insert sl "foo" "bar"
+        resFocus <- SL.focus sl "foo" (\_ -> ("barbar", Replace "barbarbar"))
+        resLookup <- SL.lookup sl "foo"
+        resFocus `shouldBe` "barbar"
+        resLookup `shouldBe` Just "barbarbar"
+
+      it "should create new value" $ do
+        sl <- SL.new
+        resFocus <- SL.focus sl "foo" (\_ -> ("barbar", Replace "barbarbar"))
+        resLookup <- SL.lookup sl "foo"
+        resFocus `shouldBe` "barbar"
+        resLookup `shouldBe` Just "barbarbar"

@@ -65,6 +65,7 @@ test-suite storage-test
                      , focus
                      , hspec
                      , bytestring
+                     , monad-parallel
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
 

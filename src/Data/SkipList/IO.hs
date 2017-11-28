@@ -8,9 +8,11 @@ module Data.SkipList.IO
   , lookup
   , insert
   , delete
+  , focus
   ) where
 
 import Prelude hiding (lookup)
+import Focus (Decision(..), Strategy)
 import Data.Atomics
 import Data.IORef
 import Data.Maybe (fromJust)
@@ -54,7 +56,7 @@ newMaxLevel maxLevel = do
           createLevels l (succ level)
 
 lookup :: (Ord k) => SkipList k v -> k -> IO (Maybe v)
-lookup SkipList{headRef} k = do
+lookup SkipList{headRef} !k = do
   headTicket <- readForCAS headRef
   res <- evalStateT (findLeafByKey k) [Start headTicket]
   case res of
@@ -62,7 +64,7 @@ lookup SkipList{headRef} k = do
     Nothing -> return Nothing
 
 insert :: (Ord k) => SkipList k v -> k -> v -> IO ()
-insert SkipList{headRef} k v = do
+insert SkipList{headRef} !k !v = do
   headTicket <- readForCAS headRef
   (res, path) <- runStateT (findLeafByKey k) [Start headTicket]
   case res of
@@ -70,12 +72,39 @@ insert SkipList{headRef} k v = do
     Nothing -> evalStateT (insertLeaf k v) path
 
 delete :: (Ord k) => SkipList k v -> k -> IO ()
-delete SkipList{headRef} k = do
+delete SkipList{headRef} !k = do
   headTicket <- readForCAS headRef
   (res, path) <- runStateT (findLeafByKey k) [Start headTicket]
   case res of
     Nothing -> return ()
     Just node -> evalStateT (deleteNode node) path
+
+focus :: (Ord k) => SkipList k v -> k -> Strategy v r -> IO r
+focus SkipList{headRef} !k strategy = do
+  headTicket <- readForCAS headRef
+  (res, path) <- runStateT (findLeafByKey k) [Start headTicket]
+  case res of
+    Nothing -> do
+      let (ret, decision) = strategy Nothing
+      case decision of
+        Replace value -> do
+          evalStateT (insertLeaf k value) path
+          return ret
+        _ -> return ret
+    Just node -> do
+      (ret, decision) <- atomicModifyIORefCAS (value node) $
+        (\value ->
+           let result@(_, decision) = strategy $ Just value
+           in
+             case decision of
+               Replace newValue -> (newValue, result)
+               _ -> (value, result)
+        )
+      case decision of
+        Remove -> do
+          evalStateT (deleteNode node) path
+          return ret
+        _ -> return ret
 
 deleteNode :: (Ord k) => Node k v -> StateT (Path k v) IO ()
 deleteNode node = do
