@@ -183,13 +183,8 @@ deleteNode count node = do
             del <- deleted nextNode
             if del
               then return $ Just nextNode
-              else
-              do
-                _ <- stepForward
-                findDeleted k
-          LT -> do
-            _ <- stepForward
-            findDeleted k
+              else stepForward >> findDeleted k
+          LT -> stepForward >> findDeleted k
 
       doDelete :: (Ord k) => k -> StateT (Path k v) IO ()
       doDelete k = do

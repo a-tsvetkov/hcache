@@ -361,6 +361,36 @@ spec = do
         size <- SL.size sl
         size `shouldBe` length remain
 
+      it "should return correct count after focus insert" $ do
+        sl <- SL.new
+        _ <- SL.focus sl "foo" (\_ -> ("bar", Replace "bar"))
+        size <- SL.size sl
+        size `shouldBe` 1
+
+      it "should return correct count after focus delete" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['a'..'z']
+        sl <- SL.new
+        forM_ assocs $ uncurry (SL.insert sl)
+        _ <- SL.focus sl "keyk" (\_ -> ("bar", Remove))
+        size <- SL.size sl
+        size `shouldBe` (length assocs - 1)
+
+      it "should return correct count after focus keep" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['a'..'z']
+        sl <- SL.new
+        forM_ assocs $ uncurry (SL.insert sl)
+        _ <- SL.focus sl "keyk" (\_ -> ("bar", Keep))
+        size <- SL.size sl
+        size `shouldBe` length assocs
+
+      it "should return correct count after adjust" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['a'..'z']
+        sl <- SL.new
+        forM_ assocs $ uncurry (SL.insert sl)
+        _ <- SL.adjust sl "keyk" (\_ -> ("bar", "bar"))
+        size <- SL.size sl
+        size `shouldBe` length assocs
+
     context "countItems" $ do
       it "should be 0 if empty" $ do
         sl <- (SL.new :: IO (SL.SkipList String String))
@@ -371,6 +401,36 @@ spec = do
         let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['a'..'z']
         sl <- SL.new
         forM_ assocs $ uncurry (SL.insert sl)
+        size <- SL.countItems sl
+        size `shouldBe` length assocs
+
+      it "should return correct count after focus insert" $ do
+        sl <- SL.new
+        _ <- SL.focus sl "foo" (\_ -> ("bar", Replace "bar"))
+        size <- SL.countItems sl
+        size `shouldBe` 1
+
+      it "should return correct count after focus delete" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['a'..'z']
+        sl <- SL.new
+        forM_ assocs $ uncurry (SL.insert sl)
+        _ <- SL.focus sl "keyk" (\_ -> ("bar", Remove))
+        size <- SL.countItems sl
+        size `shouldBe` (length assocs - 1)
+
+      it "should return correct count after focus keep" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['a'..'z']
+        sl <- SL.new
+        forM_ assocs $ uncurry (SL.insert sl)
+        _ <- SL.focus sl "keyk" (\_ -> ("bar", Keep))
+        size <- SL.countItems sl
+        size `shouldBe` length assocs
+
+      it "should return correct count after adjust" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['a'..'z']
+        sl <- SL.new
+        forM_ assocs $ uncurry (SL.insert sl)
+        _ <- SL.adjust sl "keyk" (\_ -> ("bar", "bar"))
         size <- SL.countItems sl
         size `shouldBe` length assocs
 
