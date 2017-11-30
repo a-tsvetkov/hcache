@@ -225,6 +225,25 @@ spec = do
             val `shouldBe` Just v
           )
 
+      it "should not interact with parallel insert" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) $ ['0'..'z']
+            (d, r) = partition (odd . fst) $ zip [0..] assocs
+            delete = map snd d
+            remain = map snd r
+        sl <- SL.new
+        forM_ delete $ uncurry (SL.insert sl)
+        P.forM_ assocs $ (
+          \item@(key, value) -> do
+           if (elem item delete)
+             then SL.delete sl key
+             else SL.insert sl key value
+          )
+        forM_ remain (
+          \(k, v) -> do
+            val <- SL.lookup sl k
+            val `shouldBe` Just v
+          )
+
     context "focus" $ do
       it "should supply value to the function" $ do
         sl <- SL.new

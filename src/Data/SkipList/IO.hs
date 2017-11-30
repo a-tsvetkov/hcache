@@ -323,6 +323,14 @@ peekNext = do
 peekCurrent :: (Ord k) => StateT (Path k v) IO (Node k v)
 peekCurrent = gets (node . head)
 
+backToAlive :: (Ord k) => StateT (Path k v) IO ()
+backToAlive = do
+  node <- peekCurrent
+  del <- deleted node
+  if del
+    then stepBack >> backToAlive
+    else return ()
+
 forwardToGTE :: (Ord k) => k -> StateT (Path k v) IO (Node k v)
 forwardToGTE k = do
   node <- peekNext
@@ -346,20 +354,25 @@ checkNode k node = compare k (key node)
 insertLeaf :: (Ord k) => IORef Int -> k -> v -> StateT (Path k v) IO ()
 insertLeaf count k v = do
   Next{node, nextTicket} <- stepBack
-  newNode <- liftIO $ newLeaf k v (peekTicket nextTicket)
-  res <- liftIO $ casIORef (next node) nextTicket newNode
-  case res of
-    (True, _) -> do
-      promote <- liftIO (randomIO :: IO Bool)
-      liftIO $ atomicModifyIORefCAS_ count (succ)
-      when promote $ insertLevels newNode
-    (False, newTicket) -> do
-      modify ((Next node newTicket):)
-      newBefore <- forwardToGTE k
-      case checkNode k newBefore of
-        GT -> insertLeaf count k v
-        EQ -> liftIO $ writeIORef (value newBefore) v
-        LT -> error "forwardToGTE returned LT node"
+  del <- deleted node
+  if del
+    then backToAlive >> findByKey k >> insertLeaf count k v
+    else
+    do
+      newNode <- liftIO $ newLeaf k v (peekTicket nextTicket)
+      res <- liftIO $ casIORef (next node) nextTicket newNode
+      case res of
+        (True, _) -> do
+          liftIO $ atomicModifyIORefCAS_ count (succ)
+          promote <- liftIO (randomIO :: IO Bool)
+          when promote $ insertLevels newNode
+        (False, newTicket) -> do
+          modify ((Next node newTicket):)
+          newBefore <- forwardToGTE k
+          case checkNode k newBefore of
+            GT -> insertLeaf count k v
+            EQ -> liftIO $ writeIORef (value newBefore) v
+            LT -> error "forwardToGTE returned LT node"
 
 insertLevels :: (Ord k) => Node k v -> StateT (Path k v) IO ()
 insertLevels base = do
@@ -368,19 +381,24 @@ insertLevels base = do
   case step of
     Next{} -> insertLevels base
     Down{node, nextTicket} -> do
-      newNode <- liftIO $ newInternal k (peekTicket nextTicket) base
-      res <- liftIO $ casIORef (next node) nextTicket newNode
-      case res of
-        (True, _) -> do
-          promote <- liftIO (randomIO :: IO Bool)
-          when promote $ insertLevels newNode
-        (False, newTicket) -> do
-          modify ((Next node newTicket):)
-          newBefore <- forwardToGTE k
-          case checkNode k newBefore of
-            GT -> insertLevels base
-            EQ -> return ()
-            LT -> error "forwardToGTE returrned LT node"
+      del <- deleted node
+      if del
+        then backToAlive >> findByKey k >> insertLevels base
+        else
+        do
+          newNode <- liftIO $ newInternal k (peekTicket nextTicket) base
+          res <- liftIO $ casIORef (next node) nextTicket newNode
+          case res of
+            (True, _) -> do
+              promote <- liftIO (randomIO :: IO Bool)
+              when promote $ insertLevels newNode
+            (False, newTicket) -> do
+              modify ((Next node newTicket):)
+              newBefore <- forwardToGTE k
+              case checkNode k newBefore of
+                GT -> insertLevels base
+                EQ -> return ()
+                LT -> error "forwardToGTE returrned LT node"
     Start{} -> return ()
 
 newInternal :: (Ord k) => k -> Node k v -> Node k v -> IO (Node k v)
