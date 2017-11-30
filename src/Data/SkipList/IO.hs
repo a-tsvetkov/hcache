@@ -52,8 +52,7 @@ defaultMaxLevel :: Int
 defaultMaxLevel = 16
 
 new :: (Ord k) => IO (SkipList k v)
-new = do
-  newMaxLevel defaultMaxLevel
+new = newMaxLevel defaultMaxLevel
 
 size :: (Ord k) => SkipList k v -> IO Int
 size SkipList{itemCount} = readIORef itemCount
