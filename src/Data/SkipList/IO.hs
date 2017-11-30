@@ -14,6 +14,7 @@ module Data.SkipList.IO
   , focus
   , adjust
   , assocs
+  , showNodes
   ) where
 
 import Prelude hiding (lookup)
@@ -29,13 +30,13 @@ data Node k v = Level {next :: IORef (Node k v), down :: IORef (Node k v)}
               | Internal {key :: !k, next :: IORef (Node k v), down :: IORef (Node k v), isDeleted :: IORef Bool}
               | Head {next :: IORef (Node k v)}
               | Leaf {key :: !k, value :: IORef v, next :: IORef (Node k v), isDeleted :: IORef Bool}
-              | Nil
+              | Nil deriving Eq
 
-instance Show (Node k v) where
+instance (Show k) => Show (Node k v) where
   show Level{} = "Level"
-  show Internal{} = "Internal"
+  show Internal{key} = "Internal " ++ show key
   show Head{} = "Head"
-  show Leaf{} = "Leaf"
+  show Leaf{key} = "Leaf " ++ show key
   show Nil = "Nil"
 
 data SkipList k v = SkipList {headRef :: IORef (Node k v), itemCount :: IORef Int}
@@ -43,6 +44,7 @@ data SkipList k v = SkipList {headRef :: IORef (Node k v), itemCount :: IORef In
 data PathItem k v = Start {nextTicket :: Ticket (Node k v)}
                   | Next {node :: Node k v, nextTicket :: Ticket (Node k v)}
                   | Down {node :: Node k v, nextTicket :: Ticket (Node k v)}
+                  deriving Eq
 
 type Path k v = [PathItem k v]
 
@@ -124,6 +126,22 @@ assocs SkipList{headRef} = do
       return ((key node), val)
     )
 
+  where
+    bottomLevel :: (Ord k) => StateT (Path k v) IO ([Node k v])
+    bottomLevel = bottom >> reverse <$> getLeafs
+
+    getLeafs :: (Ord k) => StateT (Path k v) IO ([Node k v])
+    getLeafs = do
+      node <- stepForward
+      case node of
+        Nil -> return []
+        Leaf{} -> do
+          del <- deleted node
+          if (not del )
+            then (node:) <$> getLeafs
+            else getLeafs
+        _ -> getLeafs
+
 adjust :: (Ord k) => SkipList k v -> k -> (v -> (v, r)) -> IO (Maybe r)
 adjust SkipList{headRef} !k f = do
   headTicket <- readForCAS headRef
@@ -158,6 +176,30 @@ focus SkipList{headRef, itemCount} !k strategy = do
           evalStateT (deleteNode itemCount node) path
           return ret
         _ -> return ret
+
+showNodes :: (Ord k, Show k) => SkipList k v -> IO ()
+showNodes SkipList{headRef} = do
+  headTicket <- readForCAS headRef
+  nodes <- evalStateT (getAllNodes) [Start headTicket]
+  forM_ nodes $ putStrLn . unwords . (map show)
+  where
+    getAllNodes :: (Ord k) => StateT (Path k v) IO [[Node k v]]
+    getAllNodes = do
+      start <- gets head
+      nodes <- getNodes
+      modify (dropWhile (/= start))
+      levelHead <- peekNext
+      if isBottom levelHead
+        then return [nodes]
+        else stepForward >> stepDown >> (nodes:) <$> getAllNodes
+
+    getNodes :: (Ord k) => StateT (Path k v) IO ([Node k v])
+    getNodes = do
+      node <- peekNext
+      case node of
+        Nil -> return [node]
+        _ -> stepForward >> ((node:) <$> getNodes)
+
 
 deleteNode :: (Ord k) => IORef Int -> Node k v -> StateT (Path k v) IO ()
 deleteNode count node = do
@@ -236,23 +278,6 @@ stepDown = do
 
 stepBack :: StateT (Path k v) IO (PathItem k v)
 stepBack = state (fromJust . uncons)
-
-bottomLevel :: (Ord k) => StateT (Path k v) IO ([Node k v])
-bottomLevel = do
-  _ <- bottom
-  reverse <$> getLeafs
-  where
-    getLeafs :: (Ord k) => StateT (Path k v) IO ([Node k v])
-    getLeafs = do
-      node <- stepForward
-      case node of
-        Nil -> return []
-        Leaf{} -> do
-          del <- deleted node
-          if (not del )
-            then (node:) <$> getLeafs
-            else getLeafs
-        _ -> getLeafs
 
 bottom :: (Ord k) => StateT (Path k v) IO (Node k v)
 bottom = do
