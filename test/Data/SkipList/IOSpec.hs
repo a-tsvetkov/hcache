@@ -304,7 +304,7 @@ spec = do
         resLookup `shouldBe` Nothing
 
     context "size" $ do
-      it "should shoul be 0 if empty" $ do
+      it "should be 0 if empty" $ do
         sl <- (SL.new :: IO (SL.SkipList String String))
         size <- SL.size sl
         size `shouldBe` 0
@@ -313,6 +313,29 @@ spec = do
         let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['a'..'z']
         sl <- SL.new
         forM_ assocs $ uncurry (SL.insert sl)
+        size <- SL.size sl
+        size `shouldBe` length assocs
+
+      it "should return correct count after parallel insert" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['0'..'z']
+        sl <- SL.new
+        P.forM_ assocs $ uncurry (SL.insert sl)
+        size <- SL.size sl
+        size `shouldBe` length assocs
+
+      it "should not be incremented by overwrite insert" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['a'..'z']
+        sl <- SL.new
+        forM_ assocs $ uncurry (SL.insert sl)
+        SL.insert sl "keyc" "bar"
+        size <- SL.size sl
+        size `shouldBe` length assocs
+
+      it "should not be decremented by empty delete" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['a'..'z']
+        sl <- SL.new
+        forM_ assocs $ uncurry (SL.insert sl)
+        SL.delete sl "foo"
         size <- SL.size sl
         size `shouldBe` length assocs
 
@@ -325,6 +348,57 @@ spec = do
         forM_ assocs $ uncurry (SL.insert sl)
         forM_ delete $ SL.delete sl . fst
         size <- SL.size sl
+        size `shouldBe` length remain
+
+      it "should return correct count after parallel delete" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) $ ['a'..'z']
+            (d, r) = partition (odd . fst) $ zip [0..] assocs
+            delete = map snd d
+            remain = map snd r
+        sl <- SL.new
+        forM_ assocs $ uncurry (SL.insert sl)
+        P.forM_ delete $ SL.delete sl . fst
+        size <- SL.size sl
+        size `shouldBe` length remain
+
+    context "countItems" $ do
+      it "should be 0 if empty" $ do
+        sl <- (SL.new :: IO (SL.SkipList String String))
+        size <- SL.countItems sl
+        size `shouldBe` 0
+
+      it "should return correct count after insert" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['a'..'z']
+        sl <- SL.new
+        forM_ assocs $ uncurry (SL.insert sl)
+        size <- SL.countItems sl
+        size `shouldBe` length assocs
+
+      it "should not be incremented by overwrite insert" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['a'..'z']
+        sl <- SL.new
+        forM_ assocs $ uncurry (SL.insert sl)
+        SL.insert sl "keyc" "bar"
+        size <- SL.countItems sl
+        size `shouldBe` length assocs
+
+      it "should not be decremented by empty delete" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) ['a'..'z']
+        sl <- SL.new
+        forM_ assocs $ uncurry (SL.insert sl)
+        SL.delete sl "foo"
+        size <- SL.countItems sl
+        size `shouldBe` length assocs
+
+      it "should return correct count after delete" $ do
+        let assocs = map (\c -> ("key" ++ [c], "value" ++ [c])) $ ['a'..'z']
+            (d, r) = partition (odd . fst) $ zip [0..] assocs
+            delete = map snd d
+            remain = map snd r
+        sl <- SL.new
+        forM_ assocs $ uncurry (SL.insert sl)
+        forM_ delete $ SL.delete sl . fst
+        size <- SL.countItems sl
         size `shouldBe` length remain
 
     context "assocs" $ do

@@ -7,6 +7,7 @@ module Data.SkipList.IO
   , new
   , newMaxLevel
   , size
+  , countItems
   , lookup
   , insert
   , delete
@@ -25,13 +26,19 @@ import Control.Monad.State.Strict
 import System.Random (randomIO)
 
 data Node k v = Level {next :: IORef (Node k v), down :: IORef (Node k v)}
-              | Head {next :: IORef (Node k v)}
               | Internal {key :: !k, next :: IORef (Node k v), down :: IORef (Node k v), isDeleted :: IORef Bool}
+              | Head {next :: IORef (Node k v)}
               | Leaf {key :: !k, value :: IORef v, next :: IORef (Node k v), isDeleted :: IORef Bool}
               | Nil
-              | Deleted
 
-data SkipList k v = SkipList {headRef :: IORef (Node k v)}
+instance Show (Node k v) where
+  show Level{} = "Level"
+  show Internal{} = "Internal"
+  show Head{} = "Head"
+  show Leaf{} = "Leaf"
+  show Nil = "Nil"
+
+data SkipList k v = SkipList {headRef :: IORef (Node k v), itemCount :: IORef Int}
 
 data PathItem k v = Start {nextTicket :: Ticket (Node k v)}
                   | Next {node :: Node k v, nextTicket :: Ticket (Node k v)}
@@ -47,21 +54,26 @@ new = do
   newMaxLevel defaultMaxLevel
 
 size :: (Ord k) => SkipList k v -> IO Int
-size SkipList{headRef} = do
+size SkipList{itemCount} = readIORef itemCount
+
+countItems :: (Ord k) => SkipList k v -> IO Int
+countItems SkipList{headRef} = do
   headTicket <- readForCAS headRef
   evalStateT (countLeafs) [Start headTicket]
   where
     countLeafs :: (Ord k) => StateT (Path k v) IO Int
-    countLeafs = do
-      _ <- bottom
-      doCount
+    countLeafs = bottom >> doCount
 
     doCount :: (Ord k) => StateT (Path k v) IO Int
     doCount = do
       node <- stepForward
       case node of
         Nil -> return 0
-        Leaf{} -> succ <$> doCount
+        Leaf{} -> do
+          del <- deleted node
+          if (not del)
+            then succ <$> doCount
+            else doCount
         _ -> doCount
 
 
@@ -69,7 +81,7 @@ newMaxLevel :: (Ord k) => Int -> IO (SkipList k v)
 newMaxLevel maxLevel = do
   baseLevel <- Head <$> newIORef Nil
   h <- createLevels baseLevel 1
-  SkipList <$> (newIORef h)
+  SkipList <$> (newIORef h) <*> newIORef 0
   where
     createLevels :: (Ord k) => Node k v -> Int -> IO (Node k v)
     createLevels base level
@@ -87,20 +99,20 @@ lookup SkipList{headRef} !k = do
     Nothing -> return Nothing
 
 insert :: (Ord k) => SkipList k v -> k -> v -> IO ()
-insert SkipList{headRef} !k !v = do
+insert SkipList{headRef, itemCount} !k !v = do
   headTicket <- readForCAS headRef
   (res, path) <- runStateT (findLeafByKey k) [Start headTicket]
   case res of
     Just node -> writeIORef (value node) v
-    Nothing -> evalStateT (insertLeaf k v) path
+    Nothing -> evalStateT (insertLeaf itemCount k v) path
 
 delete :: (Ord k) => SkipList k v -> k -> IO ()
-delete SkipList{headRef} !k = do
+delete SkipList{headRef, itemCount} !k = do
   headTicket <- readForCAS headRef
   (res, path) <- runStateT (findLeafByKey k) [Start headTicket]
   case res of
     Nothing -> return ()
-    Just node -> evalStateT (deleteNode node) path
+    Just node -> evalStateT (deleteNode itemCount node) path
 
 assocs :: (Ord k) => SkipList k v -> IO [(k, v)]
 assocs SkipList{headRef} = do
@@ -121,7 +133,7 @@ adjust SkipList{headRef} !k f = do
     Nothing -> return Nothing
 
 focus :: (Ord k) => SkipList k v -> k -> Strategy v r -> IO r
-focus SkipList{headRef} !k strategy = do
+focus SkipList{headRef, itemCount} !k strategy = do
   headTicket <- readForCAS headRef
   (res, path) <- runStateT (findLeafByKey k) [Start headTicket]
   case res of
@@ -129,7 +141,7 @@ focus SkipList{headRef} !k strategy = do
       let (ret, decision) = strategy Nothing
       case decision of
         Replace value -> do
-          evalStateT (insertLeaf k value) path
+          evalStateT (insertLeaf itemCount k value) path
           return ret
         _ -> return ret
     Just node -> do
@@ -143,14 +155,16 @@ focus SkipList{headRef} !k strategy = do
         )
       case decision of
         Remove -> do
-          evalStateT (deleteNode node) path
+          evalStateT (deleteNode itemCount node) path
           return ret
         _ -> return ret
 
-deleteNode :: (Ord k) => Node k v -> StateT (Path k v) IO ()
-deleteNode node = do
+deleteNode :: (Ord k) => IORef Int -> Node k v -> StateT (Path k v) IO ()
+deleteNode count node = do
   levels <- getLevels [node]
-  liftIO $ mapM_ markDeleted levels
+  liftIO $ do
+    mapM_ markDeleted levels
+    atomicModifyIORefCAS_ count pred
   doDelete (key node)
     where
       getLevels :: (Ord k) => [Node k v] -> StateT (Path k v) IO [Node k v]
@@ -158,34 +172,45 @@ deleteNode node = do
         step <- stepBack
         case step of
           Down{node=newNode} -> getLevels (newNode:nodes)
-          _ -> do
-            modify (step:)
-            return nodes
+          _ -> modify (step:) >> return nodes
+
+      findDeleted :: (Ord k) => k -> StateT (Path k v) IO (Maybe (Node k v))
+      findDeleted k = do
+        nextNode <- peekNext
+        case checkNode k nextNode of
+          GT -> return Nothing
+          EQ -> do
+            del <- deleted nextNode
+            if del
+              then return $ Just nextNode
+              else
+              do
+                _ <- stepForward
+                findDeleted k
+          LT -> do
+            _ <- stepForward
+            findDeleted k
 
       doDelete :: (Ord k) => k -> StateT (Path k v) IO ()
       doDelete k = do
-        Next{node=prevNode} <- stepBack
-        ticket <- liftIO $ readForCAS $ (next prevNode)
-        let toDelete = peekTicket ticket
-        del <- liftIO $ deleted toDelete
-        when (del && k==(key toDelete)) $ do
-          nextNode <- liftIO $ readIORef $ next toDelete
-          (success, newTicket) <- liftIO $ casIORef (next prevNode) ticket nextNode
-          liftIO $ writeIORef (next toDelete) Deleted
-          unless (success) $ modify ((Next prevNode newTicket):)
+        toDelete <- findDeleted k
         case toDelete of
-          Internal{} -> do
-            _ <- backAndDown
-            _ <- forwardToGTE k
-            doDelete k
-          _ -> return ()
+          Just n -> do
+            Next{node=prevNode, nextTicket=ticket} <- stepBack
+            nextNode <- liftIO $ readIORef (next n)
+            (success, newTicket) <- liftIO $ casIORef (next prevNode) ticket nextNode
+            modify ((Next prevNode newTicket):)
+            unless success $ doDelete k
+          Nothing -> return ()
+        prev <- peekCurrent
+        unless (isBottom prev) $ stepDown >> doDelete k
 
 findLeafByKey :: (Ord k) => k -> StateT (Path k v) IO (Maybe (Node k v))
 findLeafByKey k = do
   item <- findByKey k
   case item of
     Just node -> do
-      del <- liftIO $ deleted node
+      del <- deleted node
       if del then return Nothing else Just <$> bottom
     Nothing -> return Nothing
 
@@ -195,28 +220,24 @@ findByKey k = do
   case checkNode k levelGTE of
     EQ -> return $ Just levelGTE
     GT -> do
-      lastStep <- gets head
-      case node lastStep of
+      currentNode <- peekCurrent
+      case currentNode of
         Leaf{} -> return Nothing
         Head{} -> return Nothing
         _ -> do
-          _ <- backAndDown
-          findByKey k
+          stepDown >> findByKey k
     LT -> error "levelGTE returned LT node"
 
-backAndDown :: StateT (Path k v) IO (Node k v)
-backAndDown = do
+stepDown :: StateT (Path k v) IO ()
+stepDown = do
   step <- stepBack
   case step of
-    Next{node, nextTicket} -> do
-      modify ((Down node nextTicket):)
-      liftIO $ readIORef (down node)
+    Next{node, nextTicket} -> modify ((Down node nextTicket):)
     Down{node} -> do
       modify (step:)
       downNode <- liftIO $ readIORef (down node)
       ticket <- liftIO $ readForCAS (next downNode)
       modify ((Down downNode ticket):)
-      liftIO $ readIORef (down downNode)
     _ -> error "Tried to go back on a start"
 
 
@@ -233,7 +254,11 @@ bottomLevel = do
       node <- stepForward
       case node of
         Nil -> return []
-        Leaf{} -> (node:) <$> getLeafs
+        Leaf{} -> do
+          del <- deleted node
+          if (not del )
+            then (node:) <$> getLeafs
+            else getLeafs
         _ -> getLeafs
 
 bottom :: (Ord k) => StateT (Path k v) IO (Node k v)
@@ -253,29 +278,47 @@ bottom = do
 
 stepForward :: (Ord k) => StateT (Path k v) IO (Node k v)
 stepForward = do
-  prevStep <- gets(head)
+  prevStep <- gets head
   nxt <- liftIO $ case prevStep of
     Down{node} -> readIORef $ down node
     _ -> return $ peekTicket (nextTicket prevStep)
-  nxtTicket <- liftIO $ nextAlive nxt
+  nxtTicket <- liftIO $ readForCAS (next nxt)
   modify ((Next nxt nxtTicket):)
   return (peekTicket nxtTicket)
-  where
-    nextAlive :: (Ord k) => Node k v -> IO (Ticket (Node k v))
-    nextAlive Head{next} = readForCAS next
-    nextAlive Level{next} = readForCAS next
-    nextAlive node = do
-      nextTicket <- readForCAS $ next node
-      let nextNode = peekTicket nextTicket
-      del <- deleted nextNode
-      if del then nextAlive (nextNode) else return nextTicket
+
+nextAlive :: (Ord k) => Node k v -> StateT (Path k v) IO (Ticket (Node k v))
+nextAlive Head{next} = liftIO $ readForCAS next
+nextAlive Level{next} = liftIO $ readForCAS next
+nextAlive node = do
+  nextTicket <- liftIO $ readForCAS $ next node
+  let nextNode = peekTicket nextTicket
+  del <- deleted nextNode
+  if del then nextAlive (nextNode) else return nextTicket
+
+peekNext :: (Ord k) => StateT (Path k v) IO (Node k v)
+peekNext = do
+  step <- gets (head)
+  case step of
+    Start{nextTicket} -> return $ peekTicket nextTicket
+    Next{nextTicket} -> return $ peekTicket nextTicket
+    Down{node} -> liftIO $ readIORef (down node)
+
+peekCurrent :: (Ord k) => StateT (Path k v) IO (Node k v)
+peekCurrent = gets (node . head)
 
 forwardToGTE :: (Ord k) => k -> StateT (Path k v) IO (Node k v)
 forwardToGTE k = do
-  nxt <- stepForward
-  case checkNode k nxt of
-    LT -> forwardToGTE k
-    _ -> return nxt
+  node <- peekNext
+  case checkNode k node of
+    LT -> do
+      nextNode <- stepForward
+      del <- deleted nextNode
+      when del $ do
+        Next{} <- stepBack
+        alive <- nextAlive node
+        modify (Next{node, nextTicket=alive}:)
+      forwardToGTE k
+    _ -> return node
 
 checkNode :: (Ord k) => k -> Node k v -> Ordering
 checkNode _ Nil = GT
@@ -283,20 +326,21 @@ checkNode _ Head{} = LT
 checkNode _ Level{} = LT
 checkNode k node = compare k (key node)
 
-insertLeaf :: (Ord k) => k -> v -> StateT (Path k v) IO ()
-insertLeaf k v = do
+insertLeaf :: (Ord k) => IORef Int -> k -> v -> StateT (Path k v) IO ()
+insertLeaf count k v = do
   Next{node, nextTicket} <- stepBack
   newNode <- liftIO $ newLeaf k v (peekTicket nextTicket)
   res <- liftIO $ casIORef (next node) nextTicket newNode
   case res of
     (True, _) -> do
       promote <- liftIO (randomIO :: IO Bool)
+      liftIO $ atomicModifyIORefCAS_ count (succ)
       when promote $ insertLevels newNode
     (False, newTicket) -> do
       modify ((Next node newTicket):)
       newBefore <- forwardToGTE k
       case checkNode k newBefore of
-        GT -> insertLeaf k v
+        GT -> insertLeaf count k v
         EQ -> liftIO $ writeIORef (value newBefore) v
         LT -> error "forwardToGTE returned LT node"
 
@@ -326,6 +370,11 @@ newInternal :: (Ord k) => k -> Node k v -> Node k v -> IO (Node k v)
 newInternal key next down =
   (Internal key) <$> newIORef next <*> newIORef down <*> newIORef False
 
+isBottom :: (Ord k) => Node k v -> Bool
+isBottom Leaf{} = True
+isBottom Head{} = True
+isBottom _ = False
+
 newLeaf :: (Ord k) => k -> v -> Node k v -> IO (Node k v)
 newLeaf key value next =
   (Leaf key) <$> newIORef value <*> newIORef next <*> newIORef False
@@ -333,8 +382,8 @@ newLeaf key value next =
 markDeleted :: (Ord k) => Node k v -> IO ()
 markDeleted node = writeIORef (isDeleted node) (True)
 
-deleted :: (Ord k) => Node k v -> IO Bool
+deleted :: (Ord k) => Node k v -> StateT (Path k v) IO Bool
 deleted Nil = return False
 deleted Head{} = return False
 deleted Level{} = return False
-deleted node = readIORef $ isDeleted node
+deleted node = liftIO $ readIORef $ isDeleted node
