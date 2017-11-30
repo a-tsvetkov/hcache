@@ -216,11 +216,9 @@ findByKey k = do
     EQ -> return $ Just levelGTE
     GT -> do
       currentNode <- peekCurrent
-      case currentNode of
-        Leaf{} -> return Nothing
-        Head{} -> return Nothing
-        _ -> do
-          stepDown >> findByKey k
+      if  isBottom currentNode
+        then return Nothing
+        else stepDown >> findByKey k
     LT -> error "levelGTE returned LT node"
 
 stepDown :: StateT (Path k v) IO ()
@@ -263,10 +261,10 @@ bottom = do
     Down{node} -> liftIO $ readIORef (down node)
     _-> liftIO $ return $ peekTicket . nextTicket $ lastStep
 
-  case downNode of
-    Leaf{} -> return downNode
-    Head{} -> return downNode
-    _ -> do
+  if isBottom downNode
+    then return downNode
+    else
+    do
       t <- liftIO $ readForCAS (next downNode)
       modify ((Down downNode t):)
       bottom
