@@ -22,6 +22,7 @@ library
                      , Data.HashTable.IO.ConcurrentLinear
                      , Data.SkipList.IO
                      , Control.Concurrent.RWLock
+                     , Data.IORef.Marked
 
   other-modules:       Data.HashTable.Internal.Bucket
                      , Data.HashTable.Internal.Utils
@@ -60,6 +61,7 @@ test-suite storage-test
                      , Server.ServerSpec
                      , Data.HashTable.IO.ConcurrentLinearSpec
                      , Data.SkipList.IOSpec
+                     , Data.IORef.MarkedSpec
   build-depends:       base
                      , storage
                      , focus

@@ -30,14 +30,17 @@ data Node k v = Level {next :: IORef (Node k v), down :: IORef (Node k v)}
               | Internal {key :: !k, next :: IORef (Node k v), down :: IORef (Node k v), isDeleted :: IORef Bool}
               | Head {next :: IORef (Node k v)}
               | Leaf {key :: !k, value :: IORef v, next :: IORef (Node k v), isDeleted :: IORef Bool}
-              | Nil deriving Eq
+              | End
+              | Null
+              deriving Eq
 
 instance (Show k) => Show (Node k v) where
   show Level{} = "Level"
   show Internal{key} = "Internal " ++ show key
   show Head{} = "Head"
   show Leaf{key} = "Leaf " ++ show key
-  show Nil = "Nil"
+  show End = "End"
+  show Null = "Null"
 
 data SkipList k v = SkipList {headRef :: IORef (Node k v), itemCount :: IORef Int}
 
@@ -69,7 +72,7 @@ countItems SkipList{headRef} = do
     doCount = do
       node <- stepForward
       case node of
-        Nil -> return 0
+        End -> return 0
         Leaf{} -> do
           del <- deleted node
           if (not del)
@@ -80,7 +83,7 @@ countItems SkipList{headRef} = do
 
 newMaxLevel :: (Ord k) => Int -> IO (SkipList k v)
 newMaxLevel maxLevel = do
-  baseLevel <- Head <$> newIORef Nil
+  baseLevel <- Head <$> newIORef End
   h <- createLevels baseLevel 1
   SkipList <$> (newIORef h) <*> newIORef 0
   where
@@ -88,7 +91,7 @@ newMaxLevel maxLevel = do
     createLevels base level
       | level == maxLevel = return base
       | otherwise = do
-          l <- Level <$> newIORef Nil <*> newIORef base
+          l <- Level <$> newIORef End <*> newIORef base
           createLevels l (succ level)
 
 lookup :: (Ord k) => SkipList k v -> k -> IO (Maybe v)
@@ -133,7 +136,7 @@ assocs SkipList{headRef} = do
     getLeafs = do
       node <- stepForward
       case node of
-        Nil -> return []
+        End -> return []
         Leaf{} -> do
           del <- deleted node
           if (not del )
@@ -196,7 +199,7 @@ showNodes SkipList{headRef} = do
     getNodes = do
       node <- peekNext
       case node of
-        Nil -> return [node]
+        End -> return [node]
         _ -> stepForward >> ((node:) <$> getNodes)
 
 
@@ -236,7 +239,9 @@ deleteNode count node = do
             nextNode <- liftIO $ readIORef (next n)
             (success, newTicket) <- liftIO $ casIORef (next prevNode) ticket nextNode
             modify ((Next prevNode newTicket):)
-            unless success $ doDelete k
+            if  success
+              then liftIO $ writeIORef (next n) Null
+              else doDelete k
           Nothing -> return ()
         prev <- peekCurrent
         unless (isBottom prev) $ stepDown >> doDelete k
@@ -346,7 +351,7 @@ forwardToGTE k = do
     _ -> return node
 
 checkNode :: (Ord k) => k -> Node k v -> Ordering
-checkNode _ Nil = GT
+checkNode _ End = GT
 checkNode _ Head{} = LT
 checkNode _ Level{} = LT
 checkNode k node = compare k (key node)
@@ -418,7 +423,8 @@ markDeleted :: (Ord k) => Node k v -> IO ()
 markDeleted node = writeIORef (isDeleted node) (True)
 
 deleted :: (Ord k) => Node k v -> StateT (Path k v) IO Bool
-deleted Nil = return False
+deleted End = return False
 deleted Head{} = return False
 deleted Level{} = return False
+deleted Null = return True
 deleted node = liftIO $ readIORef $ isDeleted node
