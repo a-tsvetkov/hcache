@@ -19,17 +19,16 @@ module Data.SkipList.IO
 
 import Prelude hiding (lookup)
 import Focus (Decision(..), Strategy)
-import Data.Atomics
-import Data.IORef
+import Data.IORef.Marked
 import Data.Maybe (fromJust)
 import Data.List (uncons)
 import Control.Monad.State.Strict
 import System.Random (randomIO)
 
-data Node k v = Level {next :: IORef (Node k v), down :: IORef (Node k v)}
-              | Internal {key :: !k, next :: IORef (Node k v), down :: IORef (Node k v), isDeleted :: IORef Bool}
-              | Head {next :: IORef (Node k v)}
-              | Leaf {key :: !k, value :: IORef v, next :: IORef (Node k v), isDeleted :: IORef Bool}
+data Node k v = Level {next :: MarkedIORef (Node k v), down :: MarkedIORef (Node k v)}
+              | Internal {key :: !k, next :: MarkedIORef (Node k v), down :: MarkedIORef (Node k v)}
+              | Head {next :: MarkedIORef (Node k v)}
+              | Leaf {key :: !k, value :: MarkedIORef v, next :: MarkedIORef (Node k v)}
               | End
               | Null
               deriving Eq
@@ -42,7 +41,7 @@ instance (Show k) => Show (Node k v) where
   show End = "End"
   show Null = "Null"
 
-data SkipList k v = SkipList {headRef :: IORef (Node k v), itemCount :: IORef Int}
+data SkipList k v = SkipList {headRef :: MarkedIORef (Node k v), itemCount :: MarkedIORef Int}
 
 data PathItem k v = Start {nextTicket :: Ticket (Node k v)}
                   | Next {node :: Node k v, nextTicket :: Ticket (Node k v)}
@@ -203,7 +202,7 @@ showNodes SkipList{headRef} = do
         _ -> stepForward >> ((node:) <$> getNodes)
 
 
-deleteNode :: (Ord k) => IORef Int -> Node k v -> StateT (Path k v) IO ()
+deleteNode :: (Ord k) => MarkedIORef Int -> Node k v -> StateT (Path k v) IO ()
 deleteNode count node = do
   levels <- getLevels [node]
   liftIO $ do
@@ -239,7 +238,7 @@ deleteNode count node = do
             nextNode <- liftIO $ readIORef (next n)
             (success, newTicket) <- liftIO $ casIORef (next prevNode) ticket nextNode
             modify ((Next prevNode newTicket):)
-            if  success
+            if success
               then liftIO $ writeIORef (next n) Null
               else doDelete k
           Nothing -> return ()
@@ -356,7 +355,7 @@ checkNode _ Head{} = LT
 checkNode _ Level{} = LT
 checkNode k node = compare k (key node)
 
-insertLeaf :: (Ord k) => IORef Int -> k -> v -> StateT (Path k v) IO ()
+insertLeaf :: (Ord k) => MarkedIORef Int -> k -> v -> StateT (Path k v) IO ()
 insertLeaf count k v = do
   Next{node, nextTicket} <- stepBack
   del <- deleted node
@@ -406,25 +405,23 @@ insertLevels base = do
                 LT -> error "forwardToGTE returrned LT node"
     Start{} -> return ()
 
-newInternal :: (Ord k) => k -> Node k v -> Node k v -> IO (Node k v)
-newInternal key next down =
-  (Internal key) <$> newIORef next <*> newIORef down <*> newIORef False
-
 isBottom :: (Ord k) => Node k v -> Bool
 isBottom Leaf{} = True
 isBottom Head{} = True
 isBottom _ = False
 
+newInternal :: (Ord k) => k -> Node k v -> Node k v -> IO (Node k v)
+newInternal key next down = (Internal key) <$> newIORef next <*> newIORef down
+
 newLeaf :: (Ord k) => k -> v -> Node k v -> IO (Node k v)
-newLeaf key value next =
-  (Leaf key) <$> newIORef value <*> newIORef next <*> newIORef False
+newLeaf key value next = (Leaf key) <$> newIORef value <*> newIORef next
 
 markDeleted :: (Ord k) => Node k v -> IO ()
-markDeleted node = writeIORef (isDeleted node) (True)
+markDeleted node = markIORef (next node)
 
 deleted :: (Ord k) => Node k v -> StateT (Path k v) IO Bool
 deleted End = return False
 deleted Head{} = return False
 deleted Level{} = return False
 deleted Null = return True
-deleted node = liftIO $ readIORef $ isDeleted node
+deleted node = liftIO $ isMarked $ next node
