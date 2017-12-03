@@ -32,6 +32,13 @@ spec = do
         v <- readIORef r
         v `shouldBe` "bar"
 
+      it "should unmark the value" $ do
+        r <- newIORef "foo"
+        markIORef r
+        writeIORef r "bar"
+        v <- isMarked r
+        v `shouldBe` False
+
     context "readForCAS" $ do
       it "should return ticket to value" $ do
         r <- newIORef "foobar"
@@ -70,9 +77,42 @@ spec = do
         res `shouldBe` "foo"
         val `shouldBe` "bar"
 
+      it "should unmark the ref" $ do
+        r <- newIORef "foo"
+        markIORef r
+        _ <- atomicModifyIORefCAS r (\v -> ("bar", v))
+        m <- isMarked r
+        m `shouldBe` False
+
     context "atomicModifyIORefCAS_" $ do
       it "should update value" $ do
         r <- newIORef "foo"
         atomicModifyIORefCAS_ r (\_ -> "bar")
         val <- readIORef r
         val `shouldBe` "bar"
+
+      it "should unmark the ref" $ do
+        r <- newIORef "foo"
+        markIORef r
+        _ <- atomicModifyIORefCAS_ r (\_ -> "bar")
+        m <- isMarked r
+        m `shouldBe` False
+
+    context "markIORef" $ do
+      it "should preserve the value" $ do
+        r <- newIORef "foo"
+        markIORef r
+        v <- readIORef r
+        v `shouldBe` "foo"
+
+    context "isMarked" $ do
+      it "should return True if value been marked" $ do
+        r <- newIORef "foo"
+        markIORef r
+        m <- isMarked r
+        m `shouldBe` True
+
+      it "should return False if value have not been marked" $ do
+        r <- newIORef "foo"
+        m <- isMarked r
+        m `shouldBe` False
