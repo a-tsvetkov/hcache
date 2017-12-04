@@ -126,7 +126,6 @@ assocs SkipList{headRef} = do
       val <- readIORef (value node)
       return ((key node), val)
     )
-
   where
     bottomLevel :: (Ord k) => StateT (Path k v) IO ([Node k v])
     bottomLevel = bottom >> reverse <$> getLeafs
