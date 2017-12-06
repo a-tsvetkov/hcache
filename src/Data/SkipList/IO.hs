@@ -30,7 +30,6 @@ data Node k v = Head {next :: MarkedIORef (Node k v), level :: Int}
               | Internal {key :: !k, next :: MarkedIORef (Node k v), down :: MarkedIORef (Node k v)}
               | Leaf {key :: !k, value :: MarkedIORef v, next :: MarkedIORef (Node k v)}
               | End
-              | Null
               deriving Eq
 
 instance (Show k) => Show (Node k v) where
@@ -38,7 +37,6 @@ instance (Show k) => Show (Node k v) where
   show Head{} = "Head"
   show Leaf{key} = "Leaf " ++ show key
   show End = "End"
-  show Null = "Null"
 
 data SkipList k v = SkipList { startRef :: MarkedIORef (Int)
                              , levels :: Vector (Node k v)
@@ -137,7 +135,7 @@ delete sl !k = traverse sl (doDelete k)
 assocs :: (Ord k) => SkipList k v -> IO [(k, v)]
 assocs sl = do
   nodes <- traverseLevel sl 0 getLeafs
-  forM (reverse nodes) (
+  forM nodes (
     \node -> do
       val <- readIORef (value node)
       return ((key node), val)
@@ -244,13 +242,13 @@ deleteNode node = do
       findDeleted k = do
         nextNode <- peekNext
         case checkNode k nextNode of
-          GT -> return Nothing
+          LT -> return Nothing
           EQ -> do
             del <- liftIO $ deleted nextNode
             if del
               then return $ Just nextNode
               else stepForwardDeleted >> findDeleted k
-          LT -> stepForwardDeleted >> findDeleted k
+          GT -> stepForwardDeleted >> findDeleted k
 
       doDelete :: (Ord k) => k -> StateT (Path k v) IO ()
       doDelete k = do
@@ -261,9 +259,7 @@ deleteNode node = do
             nextNode <- liftIO $ readIORef (next n)
             (success, newTicket) <- liftIO $ casIORef (next prevNode) ticket nextNode
             step (Next prevNode newTicket)
-            if success
-              then liftIO $ writeIORef (next n) Null
-              else doDelete k
+            unless success $ doDelete k
           Nothing -> return ()
         prev <- peekCurrent
         unless (isBottom prev) $ stepDown >> doDelete k
@@ -282,12 +278,12 @@ findByKey k = do
   levelGTE <- forwardToGTE k
   case checkNode k levelGTE of
     EQ -> return $ Just levelGTE
-    GT -> do
+    LT -> do
       currentNode <- peekCurrent
       if isBottom currentNode
         then return Nothing
         else stepDown >> findByKey k
-    LT -> error "levelGTE returned LT node"
+    GT -> error "levelGTE returned LT node"
 
 setPath :: (Ord k) => [PathItem k v] -> StateT (Path k v) IO ()
 setPath newItems = modify (\Path{sl, startLevel} -> Path newItems sl startLevel)
@@ -386,13 +382,13 @@ forwardToGTE :: (Ord k) => k -> StateT (Path k v) IO (Node k v)
 forwardToGTE k = do
   node <- peekNext
   case checkNode k node of
-    LT -> do
+    GT -> do
       stepForward >> forwardToGTE k
     _ -> return node
 
 checkNode :: (Ord k) => k -> Node k v -> Ordering
-checkNode _ End = GT
-checkNode _ Head{} = LT
+checkNode _ End = LT
+checkNode _ Head{} = GT
 checkNode k node = compare k (key node)
 
 insertLeaf :: (Ord k) => k -> v -> StateT (Path k v) IO ()
@@ -415,9 +411,9 @@ insertLeaf k v = do
           step (Next node newTicket)
           newBefore <- forwardToGTE k
           case checkNode k newBefore of
-            GT -> insertLeaf k v
+            LT -> insertLeaf k v
             EQ -> liftIO $ writeIORef (value newBefore) v
-            LT -> error "forwardToGTE returned LT node"
+            GT -> error "forwardToGTE returned LT node"
 
 insertLevels :: (Ord k) => Node k v -> StateT (Path k v) IO ()
 insertLevels base = do
@@ -478,5 +474,4 @@ markDeleted node = markIORef (next node)
 deleted :: (Ord k) => Node k v -> IO Bool
 deleted End = return False
 deleted Head{} = return False
-deleted Null = return True
 deleted node = liftIO $ isMarked $ next node
