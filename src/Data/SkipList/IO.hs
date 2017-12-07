@@ -30,6 +30,7 @@ data Node k v = Head {next :: MarkedIORef (Node k v), level :: Int}
               | Internal {key :: !k, next :: MarkedIORef (Node k v), down :: MarkedIORef (Node k v)}
               | Leaf {key :: !k, value :: MarkedIORef v, next :: MarkedIORef (Node k v)}
               | End
+              | Null
               deriving Eq
 
 instance (Show k) => Show (Node k v) where
@@ -37,6 +38,7 @@ instance (Show k) => Show (Node k v) where
   show Head{} = "Head"
   show Leaf{key} = "Leaf " ++ show key
   show End = "End"
+  show Null = "Null"
 
 data SkipList k v = SkipList { startRef :: MarkedIORef (Int)
                              , levels :: Vector (Node k v)
@@ -213,7 +215,7 @@ showNodes sl = do
       node <- peekNext
       case node of
         End -> return [node]
-        _ -> stepForward >> ((node:) <$> getNodes)
+        _ -> stepForwardDeleted >> ((node:) <$> getNodes)
 
 
 deleteNode :: (Ord k) => Node k v -> StateT (Path k v) IO ()
@@ -231,12 +233,6 @@ deleteNode node = do
         case s of
           Down{node=newNode} -> getLevels (newNode:nodes)
           _ -> step s >> return nodes
-
-      stepForwardDeleted :: (Ord k) => StateT (Path k v) IO ()
-      stepForwardDeleted = do
-        nxt <- peekNext
-        nxtTicket <- liftIO $ readForCAS (next nxt)
-        step (Next nxt nxtTicket)
 
       findDeleted :: (Ord k) => k -> StateT (Path k v) IO (Maybe (Node k v))
       findDeleted k = do
@@ -259,7 +255,12 @@ deleteNode node = do
             nextNode <- liftIO $ readIORef (next n)
             (success, newTicket) <- liftIO $ casIORef (next prevNode) ticket nextNode
             step (Next prevNode newTicket)
-            unless success $ doDelete k
+            if success
+              then liftIO $
+              do
+                writeIORef (next n) Null
+                unless (isBottom n) $ writeIORef (down n) Null
+              else doDelete k
           Nothing -> return ()
         prev <- peekCurrent
         unless (isBottom prev) $ stepDown >> doDelete k
@@ -342,6 +343,12 @@ bottom = do
       t <- liftIO $ readForCAS (next downNode)
       step (Down downNode t)
       bottom
+
+stepForwardDeleted :: (Ord k) => StateT (Path k v) IO ()
+stepForwardDeleted = do
+  nxt <- peekNext
+  nxtTicket <- liftIO $ readForCAS (next nxt)
+  step (Next nxt nxtTicket)
 
 stepForward :: (Ord k) => StateT (Path k v) IO ()
 stepForward = do
@@ -474,4 +481,5 @@ markDeleted node = markIORef (next node)
 deleted :: (Ord k) => Node k v -> IO Bool
 deleted End = return False
 deleted Head{} = return False
+deleted Null = return True
 deleted node = liftIO $ isMarked $ next node
